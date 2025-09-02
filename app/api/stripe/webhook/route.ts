@@ -107,7 +107,7 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
   await db.subscription.update({
     where: { userId },
     data: {
-      status: mapStripeStatus(subObj.status),
+      status: mapStripeStatus(subObj.status) as any,
       currentPeriodStart: subObj.current_period_start
         ? new Date(subObj.current_period_start * 1000)
         : null,

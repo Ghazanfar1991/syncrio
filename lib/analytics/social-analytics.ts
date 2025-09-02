@@ -274,25 +274,34 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
     // Fetch analytics for each publication
     for (const post of posts) {
       for (const publication of post.publications) {
-        if (!publication.externalId) continue
+        // Use platformPostId (saved platform-specific id)
+        if (!publication.platformPostId) continue
 
-        const account = socialAccounts.find((acc: any) => acc.platform === publication.platform)
+        // Find the related account by socialAccountId
+        const account = socialAccounts.find(
+          (acc: any) => acc.id === publication.socialAccountId
+        )
         if (!account) continue
 
         let analyticsData: AnalyticsData | null = null
 
-        switch (publication.platform) {
+        const platform = account.platform as string
+        const externalId = publication.platformPostId as string
+
+        switch (platform) {
           case 'TWITTER':
-            analyticsData = await fetchTwitterAnalytics(userId, account.accountId, publication.externalId)
+            analyticsData = await fetchTwitterAnalytics(userId, account.accountId, externalId)
             break
           case 'LINKEDIN':
-            analyticsData = await fetchLinkedInAnalytics(userId, account.accountId, publication.externalId)
+            analyticsData = await fetchLinkedInAnalytics(userId, account.accountId, externalId)
             break
           case 'INSTAGRAM':
-            analyticsData = await fetchInstagramAnalytics(userId, account.accountId, publication.externalId)
+            analyticsData = await fetchInstagramAnalytics(userId, account.accountId, externalId)
             break
           case 'YOUTUBE':
-            analyticsData = await fetchYouTubeAnalytics(userId, account.accountId, publication.externalId)
+            analyticsData = await fetchYouTubeAnalytics(userId, account.accountId, externalId)
+            break
+          default:
             break
         }
 
@@ -305,7 +314,7 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
             where: {
               postId_platform: {
                 postId: post.id,
-                platform: publication.platform
+                platform: platform as any
               }
             },
             update: {
@@ -321,7 +330,7 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
             },
             create: {
               postId: post.id,
-              platform: publication.platform,
+              platform: platform as any,
               impressions: analyticsData.impressions,
               likes: analyticsData.likes,
               comments: analyticsData.comments,

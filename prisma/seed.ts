@@ -150,10 +150,11 @@ async function main() {
       data: {
         userId: demoUser.id,
         content: postData.content,
-        hashtags: postData.hashtags,
+        hashtags: Array.isArray(postData.hashtags) ? postData.hashtags.join(',') : postData.hashtags,
+        platform: 'TWITTER' as any,
         status: postData.status,
-        scheduledAt: postData.scheduledAt,
-        publishedAt: postData.publishedAt,
+        scheduledAt: postData.scheduledAt ?? null,
+        publishedAt: postData.publishedAt ?? null,
       }
     })
 
@@ -182,8 +183,8 @@ async function main() {
             likes: Math.floor(Math.random() * 100) + 10,
             comments: Math.floor(Math.random() * 20) + 2,
             shares: Math.floor(Math.random() * 15) + 1,
-            views: Math.floor(Math.random() * 1000) + 100,
-            engagement: Math.random() * 5 + 1, // 1-6% engagement rate
+            impressions: Math.floor(Math.random() * 1000) + 100,
+            engagementRate: Math.random() * 5 + 1, // 1-6% engagement rate
           }
         })
       }

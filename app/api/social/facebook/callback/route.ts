@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
              
              // Save to database directly
              const savedAccount = await db.socialAccount.create({
-               data: accountData
+               data: accountData as any
              })
              
              if (!savedAccount) {

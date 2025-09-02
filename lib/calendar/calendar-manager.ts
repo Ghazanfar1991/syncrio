@@ -133,10 +133,10 @@ export class CalendarManager {
 
       return {
         id: post.id,
-        content: post.content,
+        content: post.content ?? '',
         platforms: post.publications.map((pub: any) => pub.socialAccount.platform),
-        imageUrl: post.imageUrl || undefined,
-        scheduledAt: post.scheduledAt!,
+        imageUrl: post.imageUrl || undefined,  
+        scheduledAt: post.scheduledAt!,        
         status: post.status,
         publications: post.publications.map((pub: any) => ({
           platform: pub.socialAccount.platform,

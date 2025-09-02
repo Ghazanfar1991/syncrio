@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
         type PlatformPost = { status: string; publications: Array<{ status: string }> }
         type RecentPost = {
           id: string
-          content: string
+          content: string | null
           status: string
           createdAt: Date
           platform: string | null
