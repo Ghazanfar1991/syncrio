@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id              String          @id @default(cuid())
+  email           String          @unique
+  name            String?
+  password        String?
+  image           String?
+  emailVerified   DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  accounts        Account[]
+  chatMessages    ChatMessage[]
+  postComments    PostComment[]
+  assignedPosts   Post[]          @relation("PostAssignee")
+  posts           Post[]
+  sessions        Session[]
+  socialAccounts  SocialAccount[]
+  subscription    Subscription?
+  teamMemberships TeamMember[]
+  ownedTeams      Team[]          @relation("TeamOwner")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  tier                 SubscriptionTier
+  status               SubscriptionStatus
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  stripePriceId        String?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model SocialAccount {
+  id               String            @id @default(cuid())
+  userId           String
+  platform         SocialPlatform
+  accountId        String
+  accountName      String
+  displayName      String?
+  username        String?
+  accessToken      String
+  refreshToken     String?
+  expiresAt        DateTime?
+  // OAuth 1.0a fields for Twitter media uploads
+  consumerKey      String?
+  consumerSecret   String?
+  accessTokenSecret String?
+  oauth1AccessToken String? // OAuth 1.0a access token for media uploads
+  isActive         Boolean           @default(true)
+  isConnected      Boolean          @default(true)
+  accountType      AccountType      @default(PERSONAL)
+  permissions      Json?            @default("[]")
+  lastSync         DateTime?
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  postPublications PostPublication[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform, accountId])
+  @@map("social_accounts")
+}
+
+model Post {
+  id             String            @id @default(cuid())
+  userId         String
+  content        String?
+  hashtags       String
+  imageUrl       String?
+  videoUrl       String?
+  platform       SocialPlatform
+  status         PostStatus
+  scheduledAt    DateTime?
+  publishedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  teamId         String?
+  assigneeId     String?
+  approvalStatus ApprovalStatus    @default(PENDING)
+  approvedAt     DateTime?
+  approvedBy     String?
+  images         String?
+  videos         String?
+  title          String?           // YouTube video title
+  description    String?           // YouTube video description
+  analytics      PostAnalytics[]
+  comments       PostComment[]
+  publications   PostPublication[]
+  assignee       User?             @relation("PostAssignee", fields: [assigneeId], references: [id])
+  team           Team?             @relation(fields: [teamId], references: [id])
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("posts")
+}
+
+model PostPublication {
+  id              String            @id @default(cuid())
+  postId          String
+  socialAccountId String
+  platformPostId  String?
+  status          PublicationStatus
+  errorMessage    String?
+  publishedAt     DateTime?
+  createdAt       DateTime          @default(now())
+  socialAccount   SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  post            Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, socialAccountId])
+  @@map("post_publications")
+}
+
+model PostAnalytics {
+  id             String         @id @default(cuid())
+  postId         String
+  platform       SocialPlatform
+  impressions    Int            @default(0)
+  likes          Int            @default(0)
+  comments       Int            @default(0)
+  shares         Int            @default(0)
+  clicks         Int            @default(0)
+  saves          Int            @default(0)
+  reach          Int            @default(0)
+  engagementRate Float          @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  post           Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, platform])
+  @@map("post_analytics")
+}
+
+model ChatMessage {
+  id        String      @id @default(cuid())
+  userId    String
+  content   String
+  type      MessageType
+  metadata  Json?
+  timestamp DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model UsageTracking {
+  id        String   @id @default(cuid())
+  userId    String
+  month     Int
+  year      Int
+  postsUsed Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, month, year])
+  @@map("usage_tracking")
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  posts       Post[]
+  members     TeamMember[]
+  owner       User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  teamId   String
+  userId   String
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_comments")
+}
+
+model Cache {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   // JSON string of cached data
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cache")
+}
+
+enum SubscriptionTier {
+  STARTER
+  GROWTH
+  BUSINESS
+  AGENCY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAST_DUE
+  TRIALING
+  UNPAID
+}
+
+enum SocialPlatform {
+  TWITTER
+  LINKEDIN
+  INSTAGRAM
+  YOUTUBE
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+enum PostStatus {
+  DRAFT
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  FAILED
+}
+
+enum PublicationStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+  RETRYING
+}
+
+enum MessageType {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum TeamRole {
+  ADMIN
+  EDITOR
+  MEMBER
+  VIEWER
+}
+
+enum AccountType {
+  PERSONAL
+  BUSINESS
+  CREATOR
+}
+
+model OAuthState {
+  id           String   @id @default(cuid())
+  state        String   @unique
+  codeVerifier String
+  platform     String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@map("oauth_states")
+}
