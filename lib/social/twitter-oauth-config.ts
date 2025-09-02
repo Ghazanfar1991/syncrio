@@ -253,8 +253,15 @@ export async function uploadMediaWithOAuth2(
 
   // Create FormData for X API v2 media upload
   const formData = new FormData()
-  const blob = new Blob([mediaBuffer], { type: mediaType })
-  formData.append('media', blob)
+  // Convert Node Buffer to ArrayBuffer compatible with Blob
+  const arrayBuffer = mediaBuffer.buffer.slice(
+    mediaBuffer.byteOffset,
+    mediaBuffer.byteOffset + mediaBuffer.byteLength
+  ) as ArrayBuffer
+  const blob = new Blob([arrayBuffer], { type: mediaType })
+  // Provide a filename to ensure some APIs accept the part
+  const fileName = mediaType.startsWith('image/') ? 'upload.jpg' : mediaType.startsWith('video/') ? 'upload.mp4' : 'upload.bin'
+  formData.append('media', blob, fileName)
 
   // Set appropriate media category based on media type
   const mediaCategory = mediaType.startsWith('video/') ? 'tweet_video' : 'tweet_image'

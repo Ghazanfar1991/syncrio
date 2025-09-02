@@ -225,8 +225,8 @@ async function publishScheduledPost(post: ScheduledPost) {
           }
         })
         
-        publishResults.push({ platform, success: true, id: result.id })
-        console.log(`✅ Published to ${platform}: ${result.id}`)
+        publishResults.push({ platform, success: true, id: (result as any)?.id || null })
+        console.log(`✅ Published to ${platform}: ${(result as any)?.id ?? 'unknown'}`)
         
       } catch (error) {
         console.error(`❌ Failed to publish to ${platform}:`, error)

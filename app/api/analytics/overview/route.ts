@@ -397,7 +397,7 @@ export async function GET(req: NextRequest) {
                 publications: {
                   some: {
                     socialAccount: {
-                      platform: account.platform
+                      platform: account.platform as any
                     }
                   }
                 }
