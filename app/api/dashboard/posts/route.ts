@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         // Minimal types for posts and grouped entries
         type DashboardPost = {
           id: string
-          content: string
+          content: string | null
           status: 'SCHEDULED' | 'PUBLISHED' | string
           scheduledAt: Date | null
           publishedAt: Date | null
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
           videoUrl: string | null
           videos: string | null
           hashtags: string | null
-          platform: string | null
+          platform: any
           publications: Array<{ socialAccount: { platform: string; accountName: string | null } }>
         }
 
@@ -143,9 +143,10 @@ export async function GET(req: NextRequest) {
             })
           }
           
+          const contentText = post.content ?? ''
           acc[dateKey].push({
             id: post.id,
-            content: post.content,
+            content: contentText,
             status: post.status,
             scheduledAt: post.scheduledAt?.toISOString(),
             publishedAt: post.publishedAt?.toISOString(),
