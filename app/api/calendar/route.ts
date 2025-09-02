@@ -103,7 +103,7 @@ async function getDailyCalendar(date: Date, userId: string) {
 // Minimal shapes for this handler
 type CalendarPost = {
   id: string
-  content: string
+  content: string | null
   status: string
   publishedAt: Date | null
   scheduledAt: Date | null
@@ -177,11 +177,12 @@ async function getPostsForDateRange(startDate: Date, endDate: Date, userId: stri
     // Determine the relevant date and time based on post status
     const relevantDate = post.status === 'PUBLISHED' ? post.publishedAt : post.scheduledAt
     const timeLabel = post.status === 'PUBLISHED' ? 'Published' : 'Scheduled'
+    const contentText = post.content ?? ''
 
     return {
       id: post.id,
-      title: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : ''),
-      content: post.content,
+      title: contentText.substring(0, 50) + (contentText.length > 50 ? '...' : ''),
+      content: contentText,
       scheduledAt: relevantDate, // This will be used for grouping by date
       publishedAt: post.publishedAt, // Keep original publishedAt for reference
       status: post.status,

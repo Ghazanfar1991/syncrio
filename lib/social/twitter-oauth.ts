@@ -203,9 +203,10 @@ export async function createTwitterVideoUploadRequest(
   }
 
   // Create parameter string for signature
-  const paramString = Object.keys(allParams)
+  const paramsRecord = allParams as Record<string, string>
+  const paramString = Object.keys(paramsRecord)
     .sort()
-    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(allParams[key])}`)
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(paramsRecord[key])}`)
     .join('&')
 
   // Create signature base string
