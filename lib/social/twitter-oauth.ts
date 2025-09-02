@@ -150,7 +150,7 @@ export async function createTwitterVideoUploadRequest(
 ): Promise<any> {
   // For STATUS requests, use GET with query parameters
   const baseUrl = 'https://upload.twitter.com/1.1/media/upload.json'
-  const url = command === 'STATUS' ? `${baseUrl}?command=STATUS&media_id=${mediaId}` : baseUrl
+  const url = (command as any) === 'STATUS' ? `${baseUrl}?command=STATUS&media_id=${mediaId}` : baseUrl        
   const timestamp = Math.floor(Date.now() / 1000).toString()
   const nonce = crypto.randomBytes(16).toString('hex')
 
@@ -195,7 +195,7 @@ export async function createTwitterVideoUploadRequest(
   let allParams
   if (command === 'APPEND') {
     allParams = oauthParams
-  } else if (command === 'STATUS') {
+  } else if ((command as any) === 'STATUS') {
     // For STATUS, include OAuth params + query params from URL
     allParams = { ...oauthParams, command: 'STATUS', media_id: mediaId! }
   } else {
@@ -209,7 +209,7 @@ export async function createTwitterVideoUploadRequest(
     .join('&')
 
   // Create signature base string
-  const httpMethod = command === 'STATUS' ? 'GET' : 'POST'
+  const httpMethod = (command as any) === 'STATUS' ? 'GET' : 'POST'
   const signatureBaseString = `${httpMethod}&${encodeURIComponent(baseUrl)}&${encodeURIComponent(paramString)}`
 
   // Create signing key
@@ -276,9 +276,9 @@ export async function createTwitterVideoUploadRequest(
   )
 
   const response = await fetch(url, {
-    method: command === 'STATUS' ? 'GET' : 'POST',
+    method: (command as any) === 'STATUS' ? 'GET' : 'POST',
     headers,
-    body: command === 'STATUS' ? undefined : body
+    body: (command as any) === 'STATUS' ? undefined : body
   })
 
   if (!response.ok) {
@@ -287,7 +287,7 @@ export async function createTwitterVideoUploadRequest(
     throw new Error(`Twitter video upload ${command} failed: ${response.status}`)
   }
 
-  if (command === 'INIT' || command === 'FINALIZE' || command === 'STATUS') {
+  if (command === 'INIT' || command === 'FINALIZE' || (command as any) === 'STATUS') {
     return await response.json()
   }
 

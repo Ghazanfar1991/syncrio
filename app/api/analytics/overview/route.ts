@@ -413,7 +413,7 @@ export async function GET(req: NextRequest) {
                     gte: startDate
                   }
                 },
-                platform: account.platform
+                platform: account.platform as any
               },
               select: {
                 impressions: true,
