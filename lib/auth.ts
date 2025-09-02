@@ -58,7 +58,8 @@ export const authOptions: NextAuthOptions = {
 
   pages: {
     signIn: "/auth/signin",
-    signUp: "/auth/signup",
+    // NextAuth does not support a signUp page; use newUser for post-signup redirect
+    newUser: "/auth/signup",
   },
 
   callbacks: {
