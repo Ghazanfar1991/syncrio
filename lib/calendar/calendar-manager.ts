@@ -85,15 +85,15 @@ export class CalendarManager {
       })
 
       // Transform to CalendarPost format
-      return posts.map(post => ({
+      return posts.map((post: any) => ({
         id: post.id,
         title: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : ''),
         content: post.content,
         scheduledAt: post.scheduledAt!,
         status: post.status,
-        platforms: post.publications.map(pub => pub.socialAccount.platform),
+        platforms: post.publications.map((pub: any) => pub.socialAccount.platform),
         imageUrl: post.imageUrl || undefined,
-        publications: post.publications.map(pub => ({
+        publications: post.publications.map((pub: any) => ({
           id: pub.id,
           platform: pub.socialAccount.platform,
           status: pub.status,
@@ -134,11 +134,11 @@ export class CalendarManager {
       return {
         id: post.id,
         content: post.content,
-        platforms: post.publications.map(pub => pub.socialAccount.platform),
+        platforms: post.publications.map((pub: any) => pub.socialAccount.platform),
         imageUrl: post.imageUrl || undefined,
         scheduledAt: post.scheduledAt!,
         status: post.status,
-        publications: post.publications.map(pub => ({
+        publications: post.publications.map((pub: any) => ({
           platform: pub.socialAccount.platform,
           status: pub.status,
           accountName: pub.socialAccount.accountName
@@ -309,23 +309,23 @@ export class CalendarManager {
 
       const stats = {
         totalPosts: posts.length,
-        scheduledPosts: posts.filter(p => p.status === 'SCHEDULED').length,
-        publishedPosts: posts.filter(p => p.status === 'PUBLISHED').length,
-        failedPosts: posts.filter(p => p.status === 'FAILED').length,
+        scheduledPosts: posts.filter((p: any) => p.status === 'SCHEDULED').length,
+        publishedPosts: posts.filter((p: any) => p.status === 'PUBLISHED').length,
+        failedPosts: posts.filter((p: any) => p.status === 'FAILED').length,
         postsByPlatform: {} as Record<string, number>,
         postsByStatus: {} as Record<string, number>
       }
 
       // Count posts by platform
-      posts.forEach(post => {
-        post.publications.forEach(pub => {
+      posts.forEach((post: any) => {
+        post.publications.forEach((pub: any) => {
           const platform = pub.socialAccount.platform
           stats.postsByPlatform[platform] = (stats.postsByPlatform[platform] || 0) + 1
         })
       })
 
       // Count posts by status
-      posts.forEach(post => {
+      posts.forEach((post: any) => {
         stats.postsByStatus[post.status] = (stats.postsByStatus[post.status] || 0) + 1
       })
 
@@ -382,15 +382,15 @@ export class CalendarManager {
         }
       })
 
-      return posts.map(post => ({
+      return posts.map((post: any) => ({
         id: post.id,
         title: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : ''),
         content: post.content,
         scheduledAt: post.scheduledAt!,
         status: post.status,
-        platforms: post.publications.map(pub => pub.socialAccount.platform),
+        platforms: post.publications.map((pub: any) => pub.socialAccount.platform),
         imageUrl: post.imageUrl || undefined,
-        publications: post.publications.map(pub => ({
+        publications: post.publications.map((pub: any) => ({
           id: pub.id,
           platform: pub.socialAccount.platform,
           status: pub.status,

@@ -75,7 +75,12 @@ export function withRateLimit(
   windowMs: number = 60000 // 1 minute
 ) {
   return async (req: NextRequest) => {
-    const ip = req.ip || 'unknown'
+    // Derive client IP from headers (works on Vercel/Proxies). NextRequest may not expose `ip` in types.
+    const ip =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      req.headers.get('x-real-ip') ||
+      (req as any).ip ||
+      'unknown'
     const now = Date.now()
     const windowStart = now - windowMs
 

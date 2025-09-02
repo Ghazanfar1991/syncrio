@@ -27,7 +27,7 @@ type AnalyticsRow = {
 // Shape of posts returned for topPosts query
 type TopPost = {
   id: string
-  content: string
+  content: string | null
   publishedAt: Date | null
   publications: Array<{ socialAccount: { platform: string } }>
   analytics: Array<{
@@ -463,11 +463,13 @@ export async function GET(req: NextRequest) {
             clicks: (acc.clicks || 0) + (analytics.clicks || 0)
           }), {} as any)
 
+          const contentText = post.content ?? ''
+
           return {
             id: post.id,
-            content: post.content.length > 100 
-              ? post.content.substring(0, 100) + '...' 
-              : post.content,
+            content: contentText.length > 100 
+              ? contentText.substring(0, 100) + '...' 
+              : contentText,
             publishedAt: post.publishedAt,
             platforms,
             metrics: postMetrics

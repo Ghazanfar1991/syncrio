@@ -143,8 +143,8 @@ async function publishScheduledPost(post: ScheduledPost) {
             
           case 'INSTAGRAM':
             // Check for both images and videos
-            const hasImage = post.imageUrl || post.images
-            const hasVideo = post.videoUrl || post.videos
+            const hasImage = (post as any).imageUrl || (post as any).images
+            const hasVideo = (post as any).videoUrl || (post as any).videos
 
             if (!hasImage && !hasVideo) {
               console.warn('Instagram posts require either an image or video, skipping text-only post')
@@ -162,7 +162,7 @@ async function publishScheduledPost(post: ScheduledPost) {
 
             // Prioritize video over image
             if (hasVideo) {
-              const videoUrl = post.videoUrl || (post.videos ? JSON.parse(post.videos)[0] : null)
+              const videoUrl = (post as any).videoUrl || ((post as any).videos ? JSON.parse((post as any).videos)[0] : null)     
               if (videoUrl) {
                 result = await createInstagramVideo(account.accessToken, videoUrl, contentWithHashtags, post.userId)
               }
@@ -220,7 +220,7 @@ async function publishScheduledPost(post: ScheduledPost) {
           where: { id: publication.id },
           data: {
             status: 'PUBLISHED',
-            platformPostId: result.id,
+            platformPostId: (result as any)?.id || null,
             publishedAt: new Date()
           }
         })

@@ -323,7 +323,7 @@ function generatePlaceholderImage(request: ImageGenerationRequest): ImageGenerat
   return {
     success: true,
     imageUrl: dataUrl,
-    provider: 'placeholder'
+    provider: undefined
   }
 }
 
