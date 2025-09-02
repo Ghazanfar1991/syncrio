@@ -60,19 +60,19 @@ const Select = React.forwardRef<HTMLDivElement, SelectProps>(
       >
         {React.Children.map(children, (child) => {
           if (React.isValidElement(child)) {
-            if (child.type === SelectTrigger) {
-              return React.cloneElement(child, {
+            if (child.type === SelectTrigger) { 
+              return React.cloneElement(child as React.ReactElement<any>, {
                 onClick: () => !disabled && setIsOpen(!isOpen),
                 disabled,
                 isOpen,
                 selectedValue
-              })
+              } as any)
             }
             if (child.type === SelectContent && isOpen) {
-              return React.cloneElement(child, {
+              return React.cloneElement(child as React.ReactElement<any>, {
                 onSelect: handleSelect,
                 selectedValue
-              })
+              } as any)
             }
           }
           return child
@@ -129,11 +129,11 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps & {
         <div className="max-h-60 overflow-auto">
           {React.Children.map(children, (child) => {
             if (React.isValidElement(child)) {
-              if (child.type === SelectItem) {
-                return React.cloneElement(child, {
+              if (child.type === SelectItem) { 
+                return React.cloneElement(child as React.ReactElement<any>, {
                   onSelect: onSelect,
-                  isSelected: child.props.value === selectedValue
-                })
+                  isSelected: (child as any).props?.value === selectedValue
+                } as any)
               }
             }
             return child

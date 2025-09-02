@@ -198,7 +198,8 @@ REQUIREMENTS:
 
       // Try to get alternative models for the same purpose
       const allModels = await AIModelManager.getModelsForPurpose('content_generation')
-      const fallbackModels = allModels.filter(m => m.id !== modelConfig.id && m.isActive)
+      // Exclude undefined config by only filtering active models
+      const fallbackModels = allModels.filter(m => m.isActive)
 
       if (fallbackModels.length > 0) {
         console.log(`🔄 Trying fallback model: ${fallbackModels[0].id}`)
@@ -207,7 +208,6 @@ REQUIREMENTS:
           const fallbackCompletion = await aiService.chat.completions.create({
             model: fallbackModels[0].model,
             messages: [
-              { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
             ],
             max_tokens: fallbackModels[0].maxTokens,

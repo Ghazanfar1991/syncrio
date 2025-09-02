@@ -86,13 +86,11 @@ export function UnifiedLayout({
 
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-6">
         {/* Sidebar */}
-        <Sidebar 
-          collapsed={collapsed}
-          onToggleCollapse={setCollapsed}
-          showConnectedAccounts={showConnectedAccounts}
-          showPlanInfo={showPlanInfo}
-          className={className}
-        />
+          <Sidebar
+            collapsed={collapsed}
+            onToggleCollapse={setCollapsed}
+            className={className}
+          />
 
         {/* Main content */}
         <main className={`${collapsed ? 'col-span-12 lg:col-span-11' : 'col-span-12 lg:col-span-10'} space-y-6`}>

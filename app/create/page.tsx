@@ -2943,13 +2943,13 @@ export default function CreatePage() {
                             </div>
 
                             {/* Image Options */}
-                            {creationState.mediaOptions.includeImages && (
+                            {creationState.mediaOptions?.includeImages && (
                               <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-200 dark:border-rose-800">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                   <div className="space-y-2">
                                     <Label className="text-sm font-medium text-rose-700 dark:text-rose-300">Number of Images</Label>
                                     <select
-                                      value={creationState.mediaOptions.imageCount}
+                                      value={creationState.mediaOptions?.imageCount ?? 1}
                                       onChange={(e) => handleMediaOptionsChange({ imageCount: parseInt(e.target.value) })}
                                       className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white/60 dark:bg-neutral-800/30"
                                     >
@@ -2962,7 +2962,7 @@ export default function CreatePage() {
                                   <div className="space-y-2">
                                     <Label className="text-sm font-medium text-rose-700 dark:text-rose-300">Image Style</Label>
                                     <select
-                                      value={creationState.mediaOptions.imageStyle}
+                                      value={creationState.mediaOptions?.imageStyle ?? 'professional'}
                                       onChange={(e) => handleMediaOptionsChange({ imageStyle: e.target.value })}
                                       className="w-full px-3 py-2 border border-rose-200 dark:border-rose-800 rounded-lg bg-white/60 dark:bg-neutral-800/30"
                                     >
@@ -2976,7 +2976,7 @@ export default function CreatePage() {
                                   </div>
                                 </div>
                                 <p className="text-sm text-rose-600 dark:text-rose-400 mt-3">
-                                  AI will generate {creationState.mediaOptions.imageCount} {creationState.mediaOptions.imageStyle} image{creationState.mediaOptions.imageCount > 1 ? 's' : ''} optimized for your selected platforms
+                                  AI will generate {creationState.mediaOptions?.imageCount ?? 1} {creationState.mediaOptions?.imageStyle ?? ''} image{((creationState.mediaOptions?.imageCount ?? 1) > 1 ? 's' : '')} optimized for your selected platforms
                                 </p>
                               </div>
                             )}

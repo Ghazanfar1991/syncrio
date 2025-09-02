@@ -158,7 +158,7 @@ export class TokenManager {
     })
 
     const results = await Promise.all(
-      accounts.map(async (account) => {
+      accounts.map(async (account: any) => {
         const validation = await this.validateAndRefresh(
           userId, 
           account.platform, 

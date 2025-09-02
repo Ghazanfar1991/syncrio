@@ -218,7 +218,10 @@ export async function fetchYouTubeAnalytics(userId: string, accountId: string, v
     if (!token) return null
 
     // Use the enhanced YouTube analytics function
-    const analytics = await getYouTubeVideoAnalytics(token, videoId)
+    const youtube: any = await import('@/lib/social/youtube')
+    const analytics =
+      (await (youtube.fetchYouTubeAnalytics?.(token, videoId) ??
+        youtube.getYouTubeVideoAnalytics?.(token, videoId))) ?? null
     
     if (!analytics) {
       return null
@@ -273,7 +276,7 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
       for (const publication of post.publications) {
         if (!publication.externalId) continue
 
-        const account = socialAccounts.find(acc => acc.platform === publication.platform)
+        const account = socialAccounts.find((acc: any) => acc.platform === publication.platform)
         if (!account) continue
 
         let analyticsData: AnalyticsData | null = null

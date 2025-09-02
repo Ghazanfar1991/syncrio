@@ -140,9 +140,12 @@ export function AdvancedEditModal({
           }
         } catch (error) {
           console.warn('Failed to parse videos field:', error)
-          // If it's a single video URL string, add it directly
-          if (content.videos.trim() !== '') {
-            allVideos.push(content.videos)
+          // If it's a single video URL string, add it directly (guard type)
+          const videosVal: unknown = (content as any).videos
+          if (typeof videosVal === 'string' && videosVal.trim() !== '') {
+            allVideos.push(videosVal)
+          } else if (Array.isArray(videosVal)) {
+            allVideos.push(...(videosVal as string[]).filter(Boolean))
           }
         }
       }
@@ -516,12 +519,14 @@ export function AdvancedEditModal({
                         className="flex items-center gap-2 bg-white/80 dark:bg-rose-800/60 text-rose-800 dark:text-rose-100 border border-rose-300/60 dark:border-rose-700/60 hover:bg-white dark:hover:bg-rose-800 px-3 py-1 rounded-full shadow-sm transition-colors"
                       >
                         {hashtag}
-                        <X
+                        <button
+                          type="button"
                           className="h-3 w-3 cursor-pointer hover:text-red-600 transition-colors duration-200"
-                          title={`Remove ${hashtag}`}
-                          aria-label={`Remove hashtag ${hashtag}`}
+                          aria-hidden={true}
                           onClick={() => handleRemoveHashtag(hashtag)}
-                        />
+                        >
+                          <X className="h-3 w-3" aria-hidden="true" />
+                        </button>
                       </Badge>
                     ))}
                   </div>

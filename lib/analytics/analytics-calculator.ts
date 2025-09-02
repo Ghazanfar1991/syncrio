@@ -103,6 +103,7 @@ export interface YouTubeAnalyticsData {
     thumbnail?: string
     tags: string[]
     categoryId: string
+    shares: number
   }>
   dailyTrends: Array<{
     date: string

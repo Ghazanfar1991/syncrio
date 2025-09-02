@@ -79,13 +79,8 @@ export async function POST(req: NextRequest) {
     withAuth(async (req: NextRequest, user: any) => {
       try {
         const body = await req.json()
-        const validation = validateRequest(createTeamSchema, body)
-        
-        if (!validation.success) {
-          return apiError('Invalid request data', 400)
-        }
-
-        const { name, description } = validation.data
+        // validateRequest throws on invalid input; catch in outer try/catch
+        const { name, description } = validateRequest(createTeamSchema, body)
 
         // Check if user has permission to create teams (based on subscription)
         const userWithSubscription = await db.user.findUnique({
