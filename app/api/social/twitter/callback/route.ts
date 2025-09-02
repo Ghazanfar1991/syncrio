@@ -67,7 +67,10 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-      // Exchange code for access token
+      // Validate and exchange code for access token
+      if (!code || !state) {
+        throw new Error('Missing OAuth callback parameters: code/state')
+      }
       const tokens = await exchangeTwitterCode(code, state)
       
       // Get Twitter user information

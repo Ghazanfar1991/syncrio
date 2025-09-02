@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
         })
 
         const teams = [
-          ...ownedTeams.map(team => ({ ...team, userRole: 'OWNER' })),
-          ...memberTeams.map(member => ({ ...member.team, userRole: member.role }))
+          ...ownedTeams.map((team: any) => ({ ...team, userRole: 'OWNER' })),
+          ...memberTeams.map((member: any) => ({ ...member.team, userRole: member.role }))
         ]
 
         return apiSuccess({ teams })
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         const validation = validateRequest(createTeamSchema, body)
         
         if (!validation.success) {
-          return apiError('Invalid request data', 400, validation.errors)
+          return apiError('Invalid request data', 400)
         }
 
         const { name, description } = validation.data

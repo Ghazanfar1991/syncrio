@@ -18,9 +18,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
-      const { id } = await params
+      // use resolved id from outer scope
       const post = await db.post.findFirst({
         where: {
           id,
@@ -47,8 +48,9 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       try {
@@ -59,10 +61,10 @@ export async function PUT(
         console.log('PUT /api/posts/[id] - Parsed data:', { content, hashtags, imageUrl, images, videoUrl, videos })
 
         // Check if post exists and belongs to user
-        console.log('PUT /api/posts/[id] - Looking for post with ID:', params.id)
+        console.log('PUT /api/posts/[id] - Looking for post with ID:', id)
         
         const existingPost = await db.post.findUnique({
-          where: { id: params.id },
+          where: { id },
           include: { publications: true }
         })
 
@@ -102,7 +104,7 @@ export async function PUT(
           console.log('PUT /api/posts/[id] - Attempting database update with data:', updateData)
           
           const updatedPost = await db.post.update({
-            where: { id: params.id },
+            where: { id },
             data: updateData,
             include: {
               publications: {
@@ -141,14 +143,15 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       try {
         // Check if post exists and belongs to user
         const existingPost = await db.post.findUnique({
-          where: { id: params.id }
+          where: { id }
         })
 
         if (!existingPost) {
@@ -161,7 +164,7 @@ export async function DELETE(
 
         // Delete the post and all related data
         await db.post.delete({
-          where: { id: params.id }
+          where: { id }
         })
 
         return apiSuccess({ message: 'Post deleted successfully' })

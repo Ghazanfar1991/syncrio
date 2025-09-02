@@ -5,6 +5,42 @@ import { apiSuccess, apiError } from '@/lib/api-utils'
 import { db } from '@/lib/db'
 import { getValidYouTubeToken, getYouTubeComprehensiveAnalytics } from '@/lib/social/youtube'
 
+// Minimal type for selected social accounts used in this handler
+type ConnectedAccount = {
+  platform: string
+  accountName: string | null
+  accountId: string | null
+}
+
+// Minimal shape of analytics rows selected in this handler
+type AnalyticsRow = {
+  impressions?: number | null
+  likes?: number | null
+  comments?: number | null
+  shares?: number | null
+  clicks?: number | null
+  saves?: number | null
+  reach?: number | null
+  engagementRate?: number | null
+}
+
+// Shape of posts returned for topPosts query
+type TopPost = {
+  id: string
+  content: string
+  publishedAt: Date | null
+  publications: Array<{ socialAccount: { platform: string } }>
+  analytics: Array<{
+    platform: string
+    impressions: number | null
+    likes: number | null
+    comments: number | null
+    shares: number | null
+    clicks: number | null
+    engagementRate: number | null
+  }>
+}
+
 export async function GET(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
@@ -34,7 +70,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Get user's connected social accounts
-        const connectedAccounts = await db.socialAccount.findMany({
+        const connectedAccounts: ConnectedAccount[] = await db.socialAccount.findMany({
           where: {
             userId: user.id,
             isActive: true
@@ -79,17 +115,18 @@ export async function GET(req: NextRequest) {
           isConnected: boolean
         }> = []
         
-        const youtubeAccount = connectedAccounts.find(acc => acc.platform === 'YOUTUBE')
+        const youtubeAccount = connectedAccounts.find((acc: ConnectedAccount) => acc.platform === 'YOUTUBE')
         
         // Only fetch YouTube data if:
         // 1. No platform filter (show all platforms), OR
         // 2. YouTube platform is specifically selected
         const shouldFetchYouTube = !platformFilter || platformFilter === 'YOUTUBE'
         
-        if (youtubeAccount && shouldFetchYouTube) {
+        if (youtubeAccount?.accountId && shouldFetchYouTube) {
           try {
             console.log('Fetching YouTube analytics for overview...')
-            const accessToken = await getValidYouTubeToken(user.id, youtubeAccount.accountId)
+            const accountId: string = youtubeAccount.accountId
+            const accessToken = await getValidYouTubeToken(user.id, accountId)
             if (accessToken) {
               const startDateStr = startDate.toISOString().split('T')[0]
               const endDateStr = endDate.toISOString().split('T')[0]
@@ -100,7 +137,7 @@ export async function GET(req: NextRequest) {
                 const { calculateYouTubeAnalytics } = await import('@/lib/analytics/analytics-calculator')
                 
                 // Process YouTube data through the calculator
-                const processedYouTubeData = calculateYouTubeAnalytics(rawYouTubeData, periodDays, youtubeAccount.accountId)
+                const processedYouTubeData = calculateYouTubeAnalytics(rawYouTubeData, periodDays, accountId)
                 
                 // Debug: Log the raw YouTube data structure
                 console.log('🔍 Raw YouTube Data Structure:', {
@@ -198,7 +235,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Get real engagement metrics from PostAnalytics table
-        const analyticsData = await db.postAnalytics.findMany({
+        const analyticsData: AnalyticsRow[] = await db.postAnalytics.findMany({
           where: {
             post: {
               userId: user.id,
@@ -221,13 +258,34 @@ export async function GET(req: NextRequest) {
 
         // Calculate real engagement metrics
         const engagementMetrics = {
-          totalImpressions: analyticsData.reduce((sum, analytics) => sum + (analytics.impressions || 0), 0),
-          totalLikes: analyticsData.reduce((sum, analytics) => sum + (analytics.likes || 0), 0),
-          totalComments: analyticsData.reduce((sum, analytics) => sum + (analytics.comments || 0), 0),
-          totalShares: analyticsData.reduce((sum, analytics) => sum + (analytics.shares || 0), 0),
-          totalClicks: analyticsData.reduce((sum, analytics) => sum + (analytics.clicks || 0), 0),
-          totalSaves: analyticsData.reduce((sum, analytics) => sum + (analytics.saves || 0), 0),
-          totalReach: analyticsData.reduce((sum, analytics) => sum + (analytics.reach || 0), 0)
+          totalImpressions: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.impressions ?? 0),
+            0
+          ),
+          totalLikes: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.likes ?? 0),
+            0
+          ),
+          totalComments: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.comments ?? 0),
+            0
+          ),
+          totalShares: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.shares ?? 0),
+            0
+          ),
+          totalClicks: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.clicks ?? 0),
+            0
+          ),
+          totalSaves: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.saves ?? 0),
+            0
+          ),
+          totalReach: analyticsData.reduce(
+            (sum: number, analytics: AnalyticsRow) => sum + (analytics.reach ?? 0),
+            0
+          )
         }
 
         // Calculate engagement rate
@@ -237,7 +295,7 @@ export async function GET(req: NextRequest) {
           : '0.00'
 
         // Get top performing posts with real analytics
-        const topPosts = await db.post.findMany({
+        const topPosts: TopPost[] = await db.post.findMany({
           where: {
             userId: user.id,
             publishedAt: {
@@ -273,7 +331,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Get daily analytics for chart with real data
-        const dailyAnalytics = []
+        const dailyAnalytics: Array<{ date: string; posts: number; impressions: number; engagement: number }> = []
         for (let i = periodDays - 1; i >= 0; i--) {
           const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
           const dayStart = new Date(date.setHours(0, 0, 0, 0))
@@ -290,7 +348,7 @@ export async function GET(req: NextRequest) {
           })
 
           // Get real analytics for this day
-          const dayAnalytics = await db.postAnalytics.findMany({
+          const dayAnalytics: Array<Pick<AnalyticsRow, 'impressions' | 'likes' | 'comments' | 'shares'>> = await db.postAnalytics.findMany({
             where: {
               post: {
                 userId: user.id,
@@ -308,9 +366,14 @@ export async function GET(req: NextRequest) {
             }
           })
 
-          const dayImpressions = dayAnalytics.reduce((sum, analytics) => sum + (analytics.impressions || 0), 0)
-          const dayEngagement = dayAnalytics.reduce((sum, analytics) => 
-            sum + (analytics.likes || 0) + (analytics.comments || 0) + (analytics.shares || 0), 0
+          const dayImpressions = dayAnalytics.reduce(
+            (sum: number, analytics) => sum + (analytics.impressions ?? 0),
+            0
+          )
+          const dayEngagement = dayAnalytics.reduce(
+            (sum: number, analytics) =>
+              sum + (analytics.likes ?? 0) + (analytics.comments ?? 0) + (analytics.shares ?? 0),
+            0
           )
 
           dailyAnalytics.push({
@@ -342,7 +405,7 @@ export async function GET(req: NextRequest) {
             })
 
             // Get real analytics for this platform
-            const platformAnalytics = await db.postAnalytics.findMany({
+            const platformAnalytics: AnalyticsRow[] = await db.postAnalytics.findMany({
               where: {
                 post: {
                   userId: user.id,
@@ -361,9 +424,14 @@ export async function GET(req: NextRequest) {
               }
             })
 
-            const totalReach = platformAnalytics.reduce((sum, analytics) => sum + (analytics.impressions || 0), 0)
-            const totalEngagement = platformAnalytics.reduce((sum, analytics) => 
-              sum + (analytics.likes || 0) + (analytics.comments || 0) + (analytics.shares || 0), 0
+            const totalReach = platformAnalytics.reduce(
+              (sum: number, analytics: AnalyticsRow) => sum + (analytics.impressions ?? 0),
+              0
+            )
+            const totalEngagement = platformAnalytics.reduce(
+              (sum: number, analytics: AnalyticsRow) =>
+                sum + (analytics.likes ?? 0) + (analytics.comments ?? 0) + (analytics.shares ?? 0),
+              0
             )
             
             const avgEngagement = totalReach > 0 
@@ -382,7 +450,7 @@ export async function GET(req: NextRequest) {
         )
 
         // Combine regular posts with YouTube posts if available
-        let combinedTopPosts = topPosts.map(post => {
+        let combinedTopPosts = topPosts.map((post: TopPost) => {
           // Get platforms for this post
           const platforms = post.publications.map(pub => pub.socialAccount.platform)
           

@@ -1,9 +1,19 @@
 // Posts API endpoint for content management
 import { NextRequest } from 'next/server'
-import { SocialPlatform } from '@prisma/client'
 import { withAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError, validateRequest, schemas, parseQueryParams, hashtagsToString, formatPostWithHashtags } from '@/lib/api-utils'
 import { db, checkUsageLimit } from '@/lib/db'
+
+// Local platform type (Prisma enum not exported in this schema)
+type SocialPlatform = 'TWITTER' | 'LINKEDIN' | 'INSTAGRAM' | 'YOUTUBE'
+
+// Minimal social account shape used in this handler
+type SocialAccountLite = {
+  id: string
+  platform: string
+  accountName: string | null
+  isActive: boolean
+}
 
 export async function GET(req: NextRequest) {
   return withErrorHandling(
@@ -35,7 +45,7 @@ export async function GET(req: NextRequest) {
       const total = await db.post.count({ where })
       
       console.log('GET /api/posts - Found posts:', posts.length)
-      console.log('GET /api/posts - Posts data:', posts.map(p => ({ id: p.id, status: p.status, content: p.content ? p.content.substring(0, 50) : 'No content' })))
+      console.log('GET /api/posts - Posts data:', posts.map((p: any) => ({ id: p.id, status: p.status, content: p.content ? p.content.substring(0, 50) : 'No content' })))
 
       return apiSuccess({
         posts,
@@ -86,21 +96,27 @@ export async function POST(req: NextRequest) {
           return apiError('At least one social account must be selected', 400)
         }
 
-        const socialAccounts = await db.socialAccount.findMany({
+        const socialAccounts: SocialAccountLite[] = await db.socialAccount.findMany({
           where: {
             id: { in: socialAccountIds },
             userId: user.id,
             isActive: true
+          },
+          select: {
+            id: true,
+            platform: true,
+            accountName: true,
+            isActive: true,
           }
         })
 
-        console.log(`📝 Found ${socialAccounts.length} active social accounts for user ${user.id}:`,
-          socialAccounts.map(acc => ({ id: acc.id, platform: acc.platform, accountName: acc.accountName, isActive: acc.isActive })))
+        console.log(`📝 Found ${socialAccounts.length} active social accounts for user ${user.id}:`,  
+          socialAccounts.map((acc: SocialAccountLite) => ({ id: acc.id, platform: acc.platform, accountName: acc.accountName, isActive: acc.isActive })))
 
         if (socialAccounts.length !== socialAccountIds.length) {
           console.error(`❌ Social account validation failed. Requested: ${socialAccountIds.length}, Found: ${socialAccounts.length}`)
           console.error('Requested IDs:', socialAccountIds)
-          console.error('Found accounts:', socialAccounts.map(acc => acc.id))
+          console.error('Found accounts:', socialAccounts.map((acc: SocialAccountLite) => acc.id))
           return apiError('One or more selected social accounts are invalid or inactive', 400)
         }
 
@@ -190,7 +206,7 @@ export async function POST(req: NextRequest) {
         // Create post publications for each selected social account
         console.log(`📝 Creating ${socialAccounts.length} publications for post ${post.id}`)
         const publications = await Promise.all(
-          socialAccounts.map(account => {
+          socialAccounts.map((account: SocialAccountLite) => {
             console.log(`📝 Creating publication for account ${account.id} (${account.platform})`)
             return db.postPublication.create({
               data: {

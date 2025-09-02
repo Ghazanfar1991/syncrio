@@ -8,6 +8,17 @@ import { createInstagramMedia, createInstagramVideo, createInstagramImage, getMe
 import { uploadYouTubeVideo } from '@/lib/social/youtube'
 import { TokenManager } from '@/lib/social/token-manager'
 
+// Minimal local types to improve type safety without changing behavior
+type PostPublicationLite = { id: string; status: string; socialAccountId: string }
+type PublishResult = {
+  platform: string
+  accountName: string | null
+  success: boolean
+  platformPostId?: string | null
+  error?: string
+  needsReconnection?: boolean
+}
+
 // Helper function to combine images from both imageUrl and images columns
 function combinePostImages(post: any): string | string[] | undefined {
   const allImages: string[] = []
@@ -125,12 +136,13 @@ export async function POST(
           console.log('❌ PUBLISH ENDPOINT: No publications found for post')
           
           // Let's check if there are any publications in the database for this post
-          const dbPublications = await db.postPublication.findMany({
-            where: { postId: postId }
+          const dbPublications: PostPublicationLite[] = await db.postPublication.findMany({
+            where: { postId: postId },
+            select: { id: true, status: true, socialAccountId: true }
           })
           console.log('🚀 PUBLISH ENDPOINT: Database publications found:', dbPublications.length)
           if (dbPublications.length > 0) {
-            console.log('🚀 PUBLISH ENDPOINT: Database publications:', dbPublications.map(p => ({
+            console.log('🚀 PUBLISH ENDPOINT: Database publications:', dbPublications.map((p) => ({
               id: p.id,
               status: p.status,
               socialAccountId: p.socialAccountId
@@ -142,7 +154,7 @@ export async function POST(
 
         // Log each publication
         console.log('🚀 PUBLISH ENDPOINT: Publications found:')
-        post.publications.forEach((pub, index) => {
+        post.publications.forEach((pub: any, index: number) => {
           console.log(`  ${index + 1}. Platform: ${pub.socialAccount.platform}`)
           console.log(`     Account: ${pub.socialAccount.accountName}`)
           console.log(`     Status: ${pub.status}`)
@@ -161,7 +173,7 @@ export async function POST(
         console.log('  - YouTube title:', post.title || 'No title')
         console.log('  - YouTube description:', post.description || 'No description')
 
-        const publishResults = []
+        const publishResults: PublishResult[] = []
         let hasErrors = false
 
         console.log(`🚀 PUBLISH ENDPOINT: Starting to publish to ${post.publications.length} social accounts`)
@@ -218,6 +230,11 @@ export async function POST(
                 console.log(`🚀 PUBLISH ENDPOINT: Account ID:`, account.id)
                 console.log(`🚀 PUBLISH ENDPOINT: Access token length:`, tokenValidation.accessToken?.length || 'N/A')
 
+                if (!tokenValidation.accessToken) {
+                  throw new Error('No valid Twitter token available')
+                }
+                const accessToken: string = tokenValidation.accessToken
+
                 // Use video-enabled Twitter posting
                 const twitterVideoToPost = Array.isArray(twitterVideos) ? twitterVideos[0] : twitterVideos
                 const twitterImageToPost = Array.isArray(twitterImages) ? twitterImages[0] : twitterImages
@@ -228,7 +245,7 @@ export async function POST(
                 })
 
                 result = await postTweetWithVideo(
-                  tokenValidation.accessToken,
+                  accessToken,
                   contentWithHashtags,
                   twitterVideoToPost, // Video URL
                   twitterImageToPost, // Image URL (only used if no video)
@@ -464,35 +481,27 @@ export async function POST(
         if (successCount === 0) {
           // All platforms failed - return error response
           console.log(`❌ PUBLISH ENDPOINT: All platforms failed`)
-          const failedPublications = publishResults.filter(r => !r.success)
-          const reconnectionAccounts = failedPublications.filter(r => r.needsReconnection)
+          const failedPublications = publishResults.filter((r: PublishResult) => !r.success)
+          const reconnectionAccounts = failedPublications.filter((r: PublishResult) => r.needsReconnection)
           
           let errorMessage = `Post publishing failed on all platforms`
           
           if (reconnectionAccounts.length > 0) {
-            const platforms = [...new Set(reconnectionAccounts.map(r => r.platform))]
+            const platforms = [...new Set(reconnectionAccounts.map((r: PublishResult) => r.platform))]
             errorMessage += `. The following platforms need reconnection: ${platforms.join(', ')}`
           }
 
-          return apiError(errorMessage, 400, {
-            post: updatedPost,
-            publishResults,
-            successCount,
-            totalCount,
-            needsReconnection: reconnectionNeeded,
-            reconnectionPlatforms: reconnectionNeeded ? 
-              [...new Set(failedPublications.filter(r => r.needsReconnection).map(r => r.platform))] : []
-          })
+          return apiError(errorMessage, 400)
         } else if (successCount < totalCount) {
           // Some platforms succeeded, some failed - return success with warnings
           console.log(`⚠️ PUBLISH ENDPOINT: Partial success: ${successCount}/${totalCount} platforms succeeded`)
-          const failedPublications = publishResults.filter(r => !r.success)
-          const reconnectionAccounts = failedPublications.filter(r => r.needsReconnection)
+          const failedPublications = publishResults.filter((r: PublishResult) => !r.success)
+          const reconnectionAccounts = failedPublications.filter((r: PublishResult) => r.needsReconnection)
           
           let message = `Post published with errors: ${successCount}/${totalCount} platforms succeeded`
           
           if (reconnectionAccounts.length > 0) {
-            const platforms = [...new Set(reconnectionAccounts.map(r => r.platform))]
+            const platforms = [...new Set(reconnectionAccounts.map((r: PublishResult) => r.platform))]
             message += `. The following platforms need reconnection: ${platforms.join(', ')}`
           }
 
@@ -505,7 +514,7 @@ export async function POST(
             hasWarnings: true,
             needsReconnection: reconnectionNeeded,
             reconnectionPlatforms: reconnectionNeeded ? 
-              [...new Set(failedPublications.filter(r => r.needsReconnection).map(r => r.platform))] : []
+              [...new Set(failedPublications.filter((r: PublishResult) => r.needsReconnection).map((r: PublishResult) => r.platform))] : []
           })
         } else {
           // All platforms succeeded

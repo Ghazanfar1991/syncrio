@@ -100,11 +100,38 @@ async function getDailyCalendar(date: Date, userId: string) {
   return await getPostsForDateRange(startDate, endDate, userId)
 }
 
+// Minimal shapes for this handler
+type CalendarPost = {
+  id: string
+  content: string
+  status: string
+  publishedAt: Date | null
+  scheduledAt: Date | null
+  imageUrl: string | null
+  videoUrl: string | null
+  publications: Array<{ socialAccount: { platform: string; accountName: string | null } }>
+}
+
+type CalendarEvent = {
+  id: string
+  title: string
+  content: string
+  scheduledAt: Date | null
+  publishedAt: Date | null
+  status: string
+  platforms: string[]
+  imageUrl: string | null
+  videoUrl: string | null
+  platform: string
+  accountName: string | null
+  time: string
+}
+
 async function getPostsForDateRange(startDate: Date, endDate: Date, userId: string) {
   console.log(`Fetching posts for date range: ${startDate.toISOString()} to ${endDate.toISOString()}`)
   console.log(`User ID: ${userId}`)
 
-  const posts = await db.post.findMany({
+  const posts: CalendarPost[] = await db.post.findMany({
     where: {
       userId,
       OR: [
@@ -146,7 +173,7 @@ async function getPostsForDateRange(startDate: Date, endDate: Date, userId: stri
 
   console.log(`Found ${posts.length} posts for date range`)
 
-  return posts.map(post => {
+  return posts.map((post: CalendarPost): CalendarEvent => {
     // Determine the relevant date and time based on post status
     const relevantDate = post.status === 'PUBLISHED' ? post.publishedAt : post.scheduledAt
     const timeLabel = post.status === 'PUBLISHED' ? 'Published' : 'Scheduled'
@@ -172,8 +199,8 @@ async function getPostsForDateRange(startDate: Date, endDate: Date, userId: stri
   })
 }
 
-function groupPostsByDate(posts: any[]) {
-  const calendarData: { [date: string]: any[] } = {}
+function groupPostsByDate(posts: CalendarEvent[]) {
+  const calendarData: Record<string, CalendarEvent[]> = {}
 
   posts.forEach(post => {
     // The scheduledAt field in the mapped post already contains the relevant date

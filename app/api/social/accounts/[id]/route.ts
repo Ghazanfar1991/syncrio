@@ -6,13 +6,14 @@ import { db } from '@/lib/db'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       const account = await db.socialAccount.findFirst({
         where: {
-          id: params.id,
+          id,
           userId: user.id
         }
       })
@@ -28,8 +29,9 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       const body = await req.json()
@@ -37,7 +39,7 @@ export async function PUT(
       
       const existingAccount = await db.socialAccount.findFirst({
         where: {
-          id: params.id,
+          id,
           userId: user.id
         }
       })
@@ -47,7 +49,7 @@ export async function PUT(
       }
 
       const updatedAccount = await db.socialAccount.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           isActive: isActive !== undefined ? isActive : existingAccount.isActive,
           updatedAt: new Date()
@@ -61,13 +63,14 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       const existingAccount = await db.socialAccount.findFirst({
         where: {
-          id: params.id,
+          id,
           userId: user.id
         }
       })
@@ -77,7 +80,7 @@ export async function DELETE(
       }
 
       await db.socialAccount.delete({
-        where: { id: params.id }
+        where: { id }
       })
 
       return apiSuccess({ message: 'Social account disconnected successfully' })

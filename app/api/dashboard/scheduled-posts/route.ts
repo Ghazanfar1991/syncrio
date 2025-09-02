@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Group posts by date
-        const postsByDate = allPosts.reduce((acc, post) => {
+        const postsByDate = allPosts.reduce((acc: Record<string, any[]>, post: any) => {
           // Use local date instead of UTC to avoid timezone shift issues
           const scheduledDate = post.scheduledAt ? new Date(post.scheduledAt) : null
           const date = scheduledDate ? scheduledDate.toLocaleDateString('en-CA') : '' // en-CA format: YYYY-MM-DD

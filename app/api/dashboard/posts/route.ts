@@ -16,11 +16,43 @@ export async function GET(req: NextRequest) {
           return apiSuccess({ allPosts: [] })
         }
 
+        // Minimal types for posts and grouped entries
+        type DashboardPost = {
+          id: string
+          content: string
+          status: 'SCHEDULED' | 'PUBLISHED' | string
+          scheduledAt: Date | null
+          publishedAt: Date | null
+          imageUrl: string | null
+          images: string | null
+          videoUrl: string | null
+          videos: string | null
+          hashtags: string | null
+          platform: string | null
+          publications: Array<{ socialAccount: { platform: string; accountName: string | null } }>
+        }
+
+        type DashboardDayEntry = {
+          id: string
+          content: string
+          status: string
+          scheduledAt: string | undefined
+          publishedAt: string | undefined
+          time: string
+          platform: string
+          accountName: string | null
+          imageUrl: string | null
+          images: string | null
+          videoUrl: string | null
+          videos: string | null
+          hashtags: string
+        }
+
         const startOfMonth = new Date(year, month - 1, 1)
         const endOfMonth = new Date(year, month, 0, 23, 59, 59)
 
         // Get scheduled and published posts for the month
-        const allPosts = await db.post.findMany({
+        const allPosts: DashboardPost[] = await db.post.findMany({
           where: {
             userId: user.id,
             status: {
@@ -75,7 +107,8 @@ export async function GET(req: NextRequest) {
         })
 
         // Group posts by date
-        const postsByDate = allPosts.reduce((acc, post) => {
+        const postsByDate: Record<string, DashboardDayEntry[]> = allPosts.reduce(
+          (acc: Record<string, DashboardDayEntry[]>, post: DashboardPost) => {
           // Use publishedAt for published posts, scheduledAt for scheduled posts
           let postDate: Date | null = null
           let dateKey = ''
@@ -127,7 +160,7 @@ export async function GET(req: NextRequest) {
           })
           
           return acc
-        }, {} as Record<string, any[]>)
+        }, {} as Record<string, DashboardDayEntry[]>)
 
         return apiSuccess({ allPosts: postsByDate })
       } catch (error) {

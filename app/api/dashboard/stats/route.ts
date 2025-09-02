@@ -8,6 +8,33 @@ export async function GET(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       try {
+        // Local helper types
+        const PLATFORMS = ['TWITTER', 'LINKEDIN', 'INSTAGRAM', 'YOUTUBE'] as const
+        type Platform = typeof PLATFORMS[number]
+        type SocialAccountLite = { platform: string; accountName: string | null }
+        type PlatformPost = { status: string; publications: Array<{ status: string }> }
+        type RecentPost = {
+          id: string
+          content: string
+          status: string
+          createdAt: Date
+          platform: string | null
+          imageUrl: string | null
+          images: string | null
+          videoUrl: string | null
+          videos: string | null
+          hashtags: string | null | string[]
+          publications: Array<{ socialAccount: { platform: string; accountName: string | null } }>
+        }
+        type EngagementRow = {
+          likes: number
+          comments: number
+          shares: number
+          clicks: number | null
+          impressions: number
+          createdAt: Date
+        }
+
         const currentMonth = new Date().getMonth() + 1
         const currentYear = new Date().getFullYear()
         const startOfMonth = new Date(currentYear, currentMonth - 1, 1)
@@ -25,7 +52,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Get connected accounts count and breakdown
-        const socialAccounts = await db.socialAccount.findMany({
+        const socialAccounts: SocialAccountLite[] = await db.socialAccount.findMany({
           where: {
             userId: user.id,
             isActive: true
@@ -36,25 +63,32 @@ export async function GET(req: NextRequest) {
           }
         })
 
-        const platformBreakdown = {
+        const platformBreakdown: Record<Platform, number> = {
           TWITTER: 0,
           LINKEDIN: 0,
           INSTAGRAM: 0,
           YOUTUBE: 0
         }
 
-        socialAccounts.forEach(account => {
-          platformBreakdown[account.platform as keyof typeof platformBreakdown]++
+        socialAccounts.forEach((account: SocialAccountLite) => {
+          if ((PLATFORMS as readonly string[]).includes(account.platform)) {
+            platformBreakdown[account.platform as Platform]++
+          }
         })
 
         // Get platform-specific stats
-        const platformStats: Record<string, any> = {}
+        const platformStats: Record<Platform, { accountsConnected: number; postsPublished: number; drafts: number; scheduled: number }> = {
+          TWITTER: { accountsConnected: 0, postsPublished: 0, drafts: 0, scheduled: 0 },
+          LINKEDIN: { accountsConnected: 0, postsPublished: 0, drafts: 0, scheduled: 0 },
+          INSTAGRAM: { accountsConnected: 0, postsPublished: 0, drafts: 0, scheduled: 0 },
+          YOUTUBE: { accountsConnected: 0, postsPublished: 0, drafts: 0, scheduled: 0 },
+        }
         
-        for (const platform of ['TWITTER', 'LINKEDIN', 'INSTAGRAM', 'YOUTUBE']) {
-          const platformAccounts = socialAccounts.filter(acc => acc.platform === platform)
+        for (const platform of PLATFORMS) {
+          const platformAccounts = socialAccounts.filter((acc: SocialAccountLite) => acc.platform === platform)
           
           // Get posts for this platform
-          const platformPosts = await db.post.findMany({
+          const platformPosts: PlatformPost[] = await db.post.findMany({
             where: {
               userId: user.id,
               platform: platform as any
@@ -69,13 +103,13 @@ export async function GET(req: NextRequest) {
             }
           })
 
-          const publishedPosts = platformPosts.filter(post => 
+          const publishedPosts = platformPosts.filter((post: PlatformPost) => 
             post.status === 'PUBLISHED' || 
-            post.publications.some(pub => pub.status === 'PUBLISHED')
+            post.publications.some((pub: { status: string }) => pub.status === 'PUBLISHED')
           ).length
 
-          const draftPosts = platformPosts.filter(post => post.status === 'DRAFT').length
-          const scheduledPosts = platformPosts.filter(post => post.status === 'SCHEDULED').length
+          const draftPosts = platformPosts.filter((post: PlatformPost) => post.status === 'DRAFT').length
+          const scheduledPosts = platformPosts.filter((post: PlatformPost) => post.status === 'SCHEDULED').length
 
           platformStats[platform] = {
             accountsConnected: platformAccounts.length,
@@ -101,7 +135,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Get recent posts
-        const recentPosts = await db.post.findMany({
+        const recentPosts: RecentPost[] = await db.post.findMany({
           where: { userId: user.id },
           select: {
             id: true,
@@ -130,7 +164,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Format recent posts
-        const formattedPosts = recentPosts.map(post => {
+        const formattedPosts = recentPosts.map((post: RecentPost) => {
           const primaryPublication = post.publications[0]
           return {
             id: post.id,
@@ -148,7 +182,7 @@ export async function GET(req: NextRequest) {
         })
 
         // Get real engagement data from analytics
-        const engagementAnalytics = await db.postAnalytics.findMany({
+        const engagementAnalytics: EngagementRow[] = await db.postAnalytics.findMany({
           where: {
             post: {
               userId: user.id
@@ -165,15 +199,29 @@ export async function GET(req: NextRequest) {
         })
 
         // Calculate total engagement
-        const totalEngagement = engagementAnalytics.reduce((sum, analytics) => 
-          sum + analytics.likes + analytics.comments + analytics.shares + (analytics.clicks || 0), 0
+        const totalEngagement = engagementAnalytics.reduce(
+          (sum: number, analytics: EngagementRow) =>
+            sum + analytics.likes + analytics.comments + analytics.shares + (analytics.clicks ?? 0),
+          0
         )
 
         // Calculate engagement metrics
-        const totalLikes = engagementAnalytics.reduce((sum, analytics) => sum + analytics.likes, 0)
-        const totalComments = engagementAnalytics.reduce((sum, analytics) => sum + analytics.comments, 0)
-        const totalShares = engagementAnalytics.reduce((sum, analytics) => sum + analytics.shares, 0)
-        const totalClicks = engagementAnalytics.reduce((sum, analytics) => sum + (analytics.clicks || 0), 0)
+        const totalLikes = engagementAnalytics.reduce(
+          (sum: number, analytics: EngagementRow) => sum + analytics.likes,
+          0
+        )
+        const totalComments = engagementAnalytics.reduce(
+          (sum: number, analytics: EngagementRow) => sum + analytics.comments,
+          0
+        )
+        const totalShares = engagementAnalytics.reduce(
+          (sum: number, analytics: EngagementRow) => sum + analytics.shares,
+          0
+        )
+        const totalClicks = engagementAnalytics.reduce(
+          (sum: number, analytics: EngagementRow) => sum + (analytics.clicks ?? 0),
+          0
+        )
 
         // Generate weekly engagement data (in a real app, this would come from analytics API)
         const currentWeek = [12, 15, 18, 22, 25, 28, 30]

@@ -15,6 +15,9 @@ export async function POST(req: NextRequest) {
   let event: Stripe.Event
 
   try {
+    if (!stripe) {
+      throw new Error('Stripe is not configured. Missing STRIPE_SECRET_KEY.')
+    }
     event = stripe.webhooks.constructEvent(
       body,
       signature,
@@ -100,14 +103,19 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
     return
   }
 
+  const subObj: any = subscription as any
   await db.subscription.update({
     where: { userId },
     data: {
-      status: subscription.status.toUpperCase() as any,
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    }
+      status: mapStripeStatus(subObj.status),
+      currentPeriodStart: subObj.current_period_start
+        ? new Date(subObj.current_period_start * 1000)
+        : null,
+      currentPeriodEnd: subObj.current_period_end
+        ? new Date(subObj.current_period_end * 1000)
+        : null,
+      cancelAtPeriodEnd: !!subObj.cancel_at_period_end,
+    },
   })
 }
 
@@ -133,6 +141,11 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   console.log('Payment succeeded for invoice:', invoice.id)
 }
 
+// Map Stripe subscription.status to our app's status format (uppercase)
+function mapStripeStatus(status: string | null | undefined): string {
+  if (!status) return 'ACTIVE'
+  return status.toUpperCase()
+}
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
   // Handle failed payment - could send notification, etc.
   console.log('Payment failed for invoice:', invoice.id)

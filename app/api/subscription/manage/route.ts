@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
       let stripeSubscription = null
       if (subscription.stripeSubscriptionId) {
         try {
+          if (!stripe) {
+            throw new Error('Stripe is not configured. Missing STRIPE_SECRET_KEY.')
+          }
           stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId)
         } catch (error) {
           console.error('Failed to retrieve Stripe subscription:', error)
@@ -39,7 +42,8 @@ export async function POST(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       const body = await req.json()
-      const { action } = body
+      type Action = 'create_portal_session' | 'cancel_subscription' | 'reactivate_subscription'
+      const { action } = body as { action?: Action }
 
       const subscription = await db.subscription.findUnique({
         where: { userId: user.id }
@@ -53,12 +57,16 @@ export async function POST(req: NextRequest) {
         switch (action) {
           case 'create_portal_session': {
             // Create Stripe customer portal session
+            if (!stripe) {
+              throw new Error('Stripe is not configured. Missing STRIPE_SECRET_KEY.')
+            }
+            const returnUrl = (process.env.NEXTAUTH_URL || req.headers.get('origin') || '').replace(/\/$/, '') + '/dashboard'
             const session = await stripe.billingPortal.sessions.create({
               customer: subscription.stripeCustomerId,
-              return_url: `${process.env.NEXTAUTH_URL}/dashboard`,
+              return_url: returnUrl,
             })
 
-            return apiSuccess({ url: session.url })
+            return apiSuccess({ url: session.url || returnUrl })
           }
 
           case 'cancel_subscription': {
@@ -66,6 +74,9 @@ export async function POST(req: NextRequest) {
               return apiError('No active subscription to cancel', 400)
             }
 
+            if (!stripe) {
+              throw new Error('Stripe is not configured. Missing STRIPE_SECRET_KEY.')
+            }
             await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
               cancel_at_period_end: true
             })
@@ -83,6 +94,9 @@ export async function POST(req: NextRequest) {
               return apiError('No subscription to reactivate', 400)
             }
 
+            if (!stripe) {
+              throw new Error('Stripe is not configured. Missing STRIPE_SECRET_KEY.')
+            }
             await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
               cancel_at_period_end: false
             })

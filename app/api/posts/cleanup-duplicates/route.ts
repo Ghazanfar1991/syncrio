@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
         // Group posts by content and platform
         const contentGroups = new Map<string, any[]>()
         
-        allPosts.forEach(post => {
+        allPosts.forEach((post: any) => {
           const key = `${post.content}-${post.platform}-${post.status}`
           if (!contentGroups.has(key)) {
             contentGroups.set(key, [])
