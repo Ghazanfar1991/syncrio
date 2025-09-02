@@ -373,7 +373,7 @@ async function waitForVideoProcessing(
 
       // Check processing status
       const statusResponse = await createTwitterVideoUploadRequest(
-        'STATUS',
+        'STATUS' as any,
         Buffer.alloc(0), // Empty buffer for status check
         'video/mp4',
         consumerKey,

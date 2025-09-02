@@ -11,13 +11,15 @@ export async function POST(req: NextRequest) {
 
       try {
         const { content, type, metadata } = validateRequest(schemas.chatMessage, body)
+        // Ensure message type is always a valid enum value
+        const messageType = (type ?? 'USER') as any
 
         // Save user message
         const message = await db.chatMessage.create({
           data: {
             userId: user.id,
             content,
-            type,
+            type: messageType,
             metadata
           }
         })

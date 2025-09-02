@@ -252,7 +252,13 @@ export async function createTwitterVideoUploadRequest(
     formData.append('command', command)
     formData.append('media_id', mediaId!)
     formData.append('segment_index', segmentIndex!.toString())
-    formData.append('media', new Blob([videoBuffer]), 'chunk.mp4')
+    // Convert Node Buffer to ArrayBuffer for Blob compatibility
+    const videoArrayBuffer = videoBuffer.buffer.slice(
+      videoBuffer.byteOffset,
+      videoBuffer.byteOffset + videoBuffer.byteLength
+    ) as ArrayBuffer
+    const videoBlob = new Blob([videoArrayBuffer], { type: 'video/mp4' })
+    formData.append('media', videoBlob, 'chunk.mp4')
 
     body = formData
   } else {
