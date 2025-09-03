@@ -7,16 +7,23 @@ export interface InstagramConfig {
   redirectUri: string
 }
 
+// Build a proper base URL (avoid raw VERCEL_URL without protocol)
+const INSTAGRAM_BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.APP_URL ||
+  process.env.NEXTAUTH_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+  'http://localhost:3000'
+
 export const instagramConfig: InstagramConfig = {
   clientId: process.env.INSTAGRAM_CLIENT_ID || '',
   clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || '',
-  redirectUri: process.env.NODE_ENV === 'production'
-    ? `${process.env.VERCEL_URL}/api/social/instagram/callback`
-    : 'https://syncrio.vercel.app/api/social/instagram/callback'
+  redirectUri: `${INSTAGRAM_BASE_URL}/api/social/instagram/callback`
 } 
 
 // Instagram OAuth 2.0 URLs - Instagram API with Instagram Login (2024)
-export const INSTAGRAM_OAUTH_URL = 'https://www.instagram.com/oauth/authorize'
+// For Instagram Basic Display, the authorize endpoint is api.instagram.com
+export const INSTAGRAM_OAUTH_URL = 'https://api.instagram.com/oauth/authorize'
 export const INSTAGRAM_TOKEN_URL = 'https://api.instagram.com/oauth/access_token'
 export const INSTAGRAM_API_BASE = 'https://graph.instagram.com'
 
@@ -25,7 +32,8 @@ export function getInstagramAuthUrl(userId: string, state?: string): string {
   const params = new URLSearchParams({
     client_id: instagramConfig.clientId,
     redirect_uri: instagramConfig.redirectUri,
-    scope: 'instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments',
+    // Basic Display scopes (read-only). If you need publishing, switch to FB Login/Graph flow.
+    scope: 'user_profile,user_media',
     response_type: 'code',
     state: state || userId,
   })
@@ -773,4 +781,3 @@ export async function refreshInstagramToken(accessToken: string): Promise<{
     throw new Error(`Failed to refresh Instagram token: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
-

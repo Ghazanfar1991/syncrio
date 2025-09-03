@@ -1,4 +1,6 @@
 // Instagram OAuth callback handler
+export const runtime = 'nodejs'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -11,27 +13,22 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get('code')
     const state = searchParams.get('state')
     const error = searchParams.get('error')
+    const mk = (path: string) => new URL(path, req.url)
 
     // Handle OAuth errors
     if (error) {
       console.error('Instagram OAuth error:', error)
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=instagram_oauth_failed`
-      )
+      return NextResponse.redirect(mk('/dashboard?error=instagram_oauth_failed'))
     }
 
     if (!code) {
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=missing_code`
-      )
+      return NextResponse.redirect(mk('/dashboard?error=missing_code'))
     }
 
     // Get current user session
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/auth/signin?error=unauthorized`
-      )
+      return NextResponse.redirect(mk('/auth/signin?error=unauthorized'))
     }
 
     // Get user from database
@@ -41,9 +38,7 @@ export async function GET(req: NextRequest) {
     })
 
     if (!user) {
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=user_not_found`
-      )
+      return NextResponse.redirect(mk('/dashboard?error=user_not_found'))
     }
 
     // Check if user has reached account limit
@@ -61,9 +56,7 @@ export async function GET(req: NextRequest) {
     const limit = tierLimits[user.subscription?.tier as keyof typeof tierLimits] || 3
     
     if (accountCount >= limit) {
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=account_limit_reached`
-      )
+      return NextResponse.redirect(mk('/dashboard?error=account_limit_reached'))
     }
 
     try {
@@ -78,7 +71,7 @@ export async function GET(req: NextRequest) {
       
       // Save Instagram account directly to database
       const accountData = {
-        platform: 'INSTAGRAM',
+        platform: 'INSTAGRAM' as const,
         accountId: instagramUser.id,
         accountName: instagramUser.username,
         displayName: instagramUser.username,
@@ -87,7 +80,7 @@ export async function GET(req: NextRequest) {
         refreshToken: null,
         expiresAt: longLivedTokens.expires_in ? new Date(Date.now() + longLivedTokens.expires_in * 1000) : null,
         accountType: instagramUser.account_type === 'BUSINESS' ? 'BUSINESS' : 'PERSONAL',
-        permissions: ['user_profile', 'user_media', 'instagram_basic', 'instagram_content_publish'],
+        permissions: ['user_profile', 'user_media'],
         isConnected: true,
         isActive: true,
         userId: user.id
@@ -103,19 +96,14 @@ export async function GET(req: NextRequest) {
       }
 
       // Redirect to integrations page with success message
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?success=instagram_connected`
-      )
+      return NextResponse.redirect(mk('/integrations?success=instagram_connected'))
     } catch (error) {
       console.error('Instagram token exchange failed:', error)
-      return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=instagram_connection_failed`
-      )
+      return NextResponse.redirect(mk('/integrations?error=instagram_connection_failed'))
     }
   } catch (error) {
     console.error('Instagram OAuth callback error:', error)
-    return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/dashboard?error=oauth_callback_failed`
-    )
+    return NextResponse.redirect(new URL('/dashboard?error=oauth_callback_failed', req.url))
   }
 }
+
