@@ -1105,7 +1105,28 @@ export default function PostsPage() {
 
   {/* Status and Actions */}
               <div className="flex items-center justify-between mb-3 flex-shrink-0 -mt-10 ml-40 -mr-10">
-                
+                <div className="flex items-center gap-2 ">
+                  <div className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(post.status)} hover:scale-105 transition-transform duration-200 ${post.status === 'FAILED' ? 'animate-pulse' : ''}`}>
+                    {getStatusIcon(post.status)} {post.status === 'FAILED' ? 'FAILED' : post.status}
+                  </div>
+                  {post.status === 'FAILED' && (
+                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200 animate-pulse">
+                      ⚠️ Needs Attention
+                    </div>
+                  )}
+                  {publishingPosts.has(post.id) && (
+                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 animate-pulse">
+                      🔄 Publishing...
+                    </div>
+                  )}
+
+                </div>
+                {isViewing && (
+                  <div className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400">
+                    <div className="w-3 h-3 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin"></div>
+                    Opening...
+                  </div>
+                )}
                 <div className="">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
