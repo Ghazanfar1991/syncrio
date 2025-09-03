@@ -58,17 +58,12 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.62.0",
+    "react-is": "^19.1.1",
     "recharts": "^3.1.2",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "stripe": "^18.4.0",
     "tailwind-merge": "^3.3.1",
-    "zod": "^3.25.8"
-  },
-  "devDependencies": {
-    "prisma": "^6.14.0"
-  },
-  "overrides": {
     "zod": "^3.25.8"
   },
   "devDependencies": {
@@ -85,5 +80,8 @@
     "tsx": "^4.20.4",
     "tw-animate-css": "^1.3.7",
     "typescript": "^5"
+  },
+  "overrides": {
+    "zod": "^3.25.8"
   }
 }
