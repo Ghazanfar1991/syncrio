@@ -1,7 +1,6 @@
 // Twitter OAuth 2.0 configuration and setup
 import crypto from 'crypto'
-import fs from 'fs'
-import path from 'path'
+import { cookies } from 'next/headers'
 
 export interface TwitterConfig {
   clientId: string
@@ -9,10 +8,18 @@ export interface TwitterConfig {
   redirectUri: string
 }
 
+// Compute a proper base URL (VERCEL_URL lacks protocol)
+const BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.APP_URL ||
+  process.env.NEXTAUTH_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+  'http://localhost:3000'
+
 export const twitterConfig: TwitterConfig = {
   clientId: process.env.TWITTER_CLIENT_ID || '',
   clientSecret: process.env.TWITTER_CLIENT_SECRET || '',
-  redirectUri: `${process.env.NEXTAUTH_URL}/api/social/twitter/callback`
+  redirectUri: `${BASE_URL}/api/social/twitter/callback`
 }
 
 // Check if Twitter is configured
@@ -26,82 +33,38 @@ export const TWITTER_TOKEN_URL = 'https://api.x.com/2/oauth2/token'
 
 // Generate code verifier and challenge for PKCE
 function generateCodeVerifier(): string {
-  const array = new Uint8Array(32)
-  crypto.getRandomValues(array)
-  return Buffer.from(array).toString('base64url')
+  // 32 bytes -> base64url, 43-128 chars
+  return crypto
+    .randomBytes(32)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
 }
 
 function generateCodeChallenge(verifier: string): string {
-  const hash = crypto.createHash('sha256').update(verifier).digest()
-  return Buffer.from(hash).toString('base64url')
-}
-
-// Temporary file-based storage for code verifiers
-const TEMP_DIR = path.join(process.cwd(), '.tmp')
-const VERIFIERS_FILE = path.join(TEMP_DIR, 'oauth-verifiers.json')
-
-function ensureTempDir() {
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-  }
+  const hash = crypto.createHash('sha256').update(verifier).digest('base64')
+  return hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
 function storeCodeVerifier(state: string, verifier: string) {
-  ensureTempDir()
-  let verifiers: Record<string, { verifier: string; expires: number }> = {}
-
-  if (fs.existsSync(VERIFIERS_FILE)) {
-    try {
-      verifiers = JSON.parse(fs.readFileSync(VERIFIERS_FILE, 'utf8'))
-    } catch (error) {
-      console.warn('Failed to read verifiers file:', error)
-    }
+  try {
+    cookies().set(`tw_cv_${state}`, verifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 10 * 60,
+      path: '/'
+    })
+  } catch {
+    // No request context (e.g., during build) — ignore
   }
-
-  // Clean up expired verifiers
-  const now = Date.now()
-  Object.keys(verifiers).forEach(key => {
-    if (verifiers[key].expires < now) {
-      delete verifiers[key]
-    }
-  })
-
-  // Store new verifier with 10 minute expiration
-  verifiers[state] = {
-    verifier,
-    expires: now + 10 * 60 * 1000
-  }
-
-  fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
 }
 
 function getCodeVerifier(state: string): string | null {
-  if (!fs.existsSync(VERIFIERS_FILE)) {
-    return null
-  }
-
   try {
-    const verifiers = JSON.parse(fs.readFileSync(VERIFIERS_FILE, 'utf8'))
-    const entry = verifiers[state]
-
-    if (!entry) {
-      return null
-    }
-
-    if (entry.expires < Date.now()) {
-      // Clean up expired entry
-      delete verifiers[state]
-      fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
-      return null
-    }
-
-    // Clean up used verifier
-    delete verifiers[state]
-    fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
-
-    return entry.verifier
-  } catch (error) {
-    console.warn('Failed to read verifier:', error)
+    return cookies().get(`tw_cv_${state}`)?.value || null
+  } catch {
     return null
   }
 }
@@ -308,3 +271,4 @@ export async function uploadMediaWithOAuth2(
     expires_after_secs: result.expires_after_secs || result.data?.expires_after_secs || 86400
   }
 }
+
