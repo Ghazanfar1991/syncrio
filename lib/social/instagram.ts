@@ -15,25 +15,53 @@ const INSTAGRAM_BASE_URL =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
   'http://localhost:3000'
 
+// Choose OAuth provider: 'instagram' (Basic Display) or 'facebook' (Facebook Login for Instagram Graph)
+const IG_OAUTH_PROVIDER = (process.env.INSTAGRAM_OAUTH_PROVIDER || 'instagram').toLowerCase()
+const USE_FACEBOOK_OAUTH = IG_OAUTH_PROVIDER === 'facebook' || IG_OAUTH_PROVIDER === 'graph'
+
+const IG_CLIENT_ID = USE_FACEBOOK_OAUTH
+  ? (process.env.FACEBOOK_APP_ID || '')
+  : (process.env.INSTAGRAM_CLIENT_ID || '')
+
+const IG_CLIENT_SECRET = USE_FACEBOOK_OAUTH
+  ? (process.env.FACEBOOK_APP_SECRET || '')
+  : (process.env.INSTAGRAM_CLIENT_SECRET || '')
+
 export const instagramConfig: InstagramConfig = {
-  clientId: process.env.INSTAGRAM_CLIENT_ID || '',
-  clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || '',
+  clientId: IG_CLIENT_ID,
+  clientSecret: IG_CLIENT_SECRET,
   redirectUri: `${INSTAGRAM_BASE_URL}/api/social/instagram/callback`
 } 
 
 // Instagram OAuth 2.0 URLs - Instagram API with Instagram Login (2024)
-// For Instagram Basic Display, the authorize endpoint is api.instagram.com
-export const INSTAGRAM_OAUTH_URL = 'https://api.instagram.com/oauth/authorize'
-export const INSTAGRAM_TOKEN_URL = 'https://api.instagram.com/oauth/access_token'
+// OAuth endpoints (Basic Display vs Facebook Login) with env overrides
+export const INSTAGRAM_OAUTH_URL =
+  process.env.INSTAGRAM_AUTH_URL ||
+  (USE_FACEBOOK_OAUTH
+    ? 'https://www.facebook.com/v18.0/dialog/oauth'
+    : 'https://api.instagram.com/oauth/authorize')
+
+export const INSTAGRAM_TOKEN_URL =
+  process.env.INSTAGRAM_TOKEN_URL ||
+  (USE_FACEBOOK_OAUTH
+    ? 'https://graph.facebook.com/v18.0/oauth/access_token'
+    : 'https://api.instagram.com/oauth/access_token')
+
+// API base remains graph.instagram.com for read-only (Basic Display).
+// Note: For publishing via Instagram Graph, switch to https://graph.facebook.com/v18.0/{ig-user-id}
 export const INSTAGRAM_API_BASE = 'https://graph.instagram.com'
 
 // Generate Instagram OAuth authorization URL
 export function getInstagramAuthUrl(userId: string, state?: string): string {
+  const SCOPES =
+    process.env.INSTAGRAM_SCOPES ||
+    (USE_FACEBOOK_OAUTH
+      ? 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts'
+      : 'user_profile,user_media')
   const params = new URLSearchParams({
     client_id: instagramConfig.clientId,
     redirect_uri: instagramConfig.redirectUri,
-    // Basic Display scopes (read-only). If you need publishing, switch to FB Login/Graph flow.
-    scope: 'user_profile,user_media',
+    scope: SCOPES,
     response_type: 'code',
     state: state || userId,
   })
