@@ -1,6 +1,5 @@
 // Twitter OAuth 2.0 configuration and setup
 import crypto from 'crypto'
-import { cookies } from 'next/headers'
 
 export interface TwitterConfig {
   clientId: string
@@ -47,23 +46,50 @@ function generateCodeChallenge(verifier: string): string {
   return hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-function storeCodeVerifier(state: string, verifier: string) {
-  try {
-    cookies().set(`tw_cv_${state}`, verifier, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 10 * 60,
-      path: '/'
-    })
-  } catch {
-    // No request context (e.g., during build) — ignore
-  }
+// HMAC-signed state payload carrying short-lived PKCE verifier (no FS/cookies)
+const STATE_SECRET =
+  process.env.TWITTER_STATE_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  'dev-state-secret'
+
+type StatePayload = {
+  u: string // user id
+  v: string // code verifier
+  t: number // timestamp (ms)
+  s?: string // optional caller-provided state
 }
 
-function getCodeVerifier(state: string): string | null {
+function b64url(input: string | Buffer): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
+}
+
+function sign(data: string): string {
+  const sig = crypto.createHmac('sha256', STATE_SECRET).update(data).digest('base64')
+  return sig.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function createSignedState(payload: StatePayload): string {
+  const json = JSON.stringify(payload)
+  const msg = b64url(json)
+  const sig = sign(msg)
+  return `${msg}.${sig}`
+}
+
+function parseSignedState(state: string): StatePayload | null {
   try {
-    return cookies().get(`tw_cv_${state}`)?.value || null
+    const [msg, sig] = state.split('.')
+    if (!msg || !sig) return null
+    const expected = sign(msg)
+    if (sig !== expected) return null
+    const json = Buffer.from(msg.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    const payload = JSON.parse(json) as StatePayload
+    // 10 minute TTL
+    if (Date.now() - payload.t > 10 * 60 * 1000) return null
+    return payload
   } catch {
     return null
   }
@@ -75,8 +101,7 @@ export function getTwitterAuthUrl(userId: string, state?: string): string {
   const codeChallenge = generateCodeChallenge(codeVerifier)
 
   // Store the code verifier temporarily
-  const stateValue = state || userId
-  storeCodeVerifier(stateValue, codeVerifier)
+  const stateValue = createSignedState({ u: userId, v: codeVerifier, t: Date.now(), s: state })
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -101,8 +126,9 @@ export async function exchangeTwitterCode(code: string, state: string): Promise<
   console.log('🔄 State:', state)
   console.log('🔄 Code length:', code.length)
 
-  // Get the stored code verifier
-  const codeVerifier = getCodeVerifier(state)
+  // Extract the code verifier from the signed state
+  const payload = parseSignedState(state)
+  const codeVerifier = payload?.v
 
   if (!codeVerifier) {
     console.error('❌ Code verifier not found for state:', state)
@@ -120,6 +146,7 @@ export async function exchangeTwitterCode(code: string, state: string): Promise<
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
+      client_id: twitterConfig.clientId,
       redirect_uri: twitterConfig.redirectUri,
       code_verifier: codeVerifier
     })
@@ -271,4 +298,3 @@ export async function uploadMediaWithOAuth2(
     expires_after_secs: result.expires_after_secs || result.data?.expires_after_secs || 86400
   }
 }
-

@@ -13,22 +13,22 @@ export async function GET(req: NextRequest) {
     const code = searchParams.get('code')
     const state = searchParams.get('state')
     const error = searchParams.get('error')
-    const makeUrl = (path: string) => new URL(path, req.url)
+    const mk = (path: string) => new URL(path, req.url)
 
     // Handle OAuth errors
     if (error) {
       console.error('Twitter OAuth error:', error)
-      return NextResponse.redirect(makeUrl('/dashboard?error=twitter_oauth_failed'))
+      return NextResponse.redirect(mk('/dashboard?error=twitter_oauth_failed'))
     }
 
     if (!code) {
-      return NextResponse.redirect(makeUrl('/dashboard?error=missing_code'))
+      return NextResponse.redirect(mk('/dashboard?error=missing_code'))
     }
 
     // Get current user session
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
-      return NextResponse.redirect(makeUrl('/auth/signin?error=unauthorized'))
+      return NextResponse.redirect(mk('/auth/signin?error=unauthorized'))
     }
 
     // Get user from database
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     })
 
     if (!user) {
-      return NextResponse.redirect(makeUrl('/dashboard?error=user_not_found'))
+      return NextResponse.redirect(mk('/dashboard?error=user_not_found'))
     }
 
     // Check if user has reached account limit
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const limit = tierLimits[user.subscription?.tier as keyof typeof tierLimits] || 3
     
     if (accountCount >= limit) {
-      return NextResponse.redirect(makeUrl('/dashboard?error=account_limit_reached'))
+      return NextResponse.redirect(mk('/dashboard?error=account_limit_reached'))
     }
 
     try {
@@ -100,10 +100,10 @@ export async function GET(req: NextRequest) {
       }
 
       // Redirect to integrations page with success message
-      return NextResponse.redirect(makeUrl('/integrations?success=twitter_connected'))
+      return NextResponse.redirect(mk('/integrations?success=twitter_connected'))
     } catch (error) {
       console.error('Twitter token exchange failed:', error)
-      return NextResponse.redirect(makeUrl('/integrations?error=twitter_connection_failed'))
+      return NextResponse.redirect(mk('/integrations?error=twitter_connection_failed'))
     }
   } catch (error) {
     console.error('Twitter OAuth callback error:', error)
