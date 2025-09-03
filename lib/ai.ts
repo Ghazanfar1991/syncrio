@@ -94,21 +94,15 @@ export const generateContent = async (
     return fallbackContent
   }
 
-  try {
-    // Get the best model for content generation
-    let modelConfig = await AIModelManager.getModelForPurpose('content_generation')
-    
-    // If the default model fails due to credits, try to use a free model
-    let useFreeModel = false
-    
-    const platformGuidelines = {
-      X: 'Maximum 280 characters. Use engaging hooks, conversational tone, relevant hashtags. Include emojis for engagement.',
-      LINKEDIN: 'Professional tone, 1300-3000 characters optimal. Focus on insights, value, thought leadership. Use line breaks for readability.',
-      INSTAGRAM: 'Visual-first captions, 125-150 characters for optimal engagement. Use emojis, storytelling, strategic hashtags.',
-      YOUTUBE: 'Compelling titles (60 chars max), descriptions with keywords, clear call-to-actions. SEO-optimized.'
-    }
+  // Build guidelines and system prompt in function scope so it's accessible in catch blocks
+  const platformGuidelines = {
+    X: 'Maximum 280 characters. Use engaging hooks, conversational tone, relevant hashtags. Include emojis for engagement.',
+    LINKEDIN: 'Professional tone, 1300-3000 characters optimal. Focus on insights, value, thought leadership. Use line breaks for readability.',
+    INSTAGRAM: 'Visual-first captions, 125-150 characters for optimal engagement. Use emojis, storytelling, strategic hashtags.',
+    YOUTUBE: 'Compelling titles (60 chars max), descriptions with keywords, clear call-to-actions. SEO-optimized.'
+  }
 
-    const systemPrompt = `Generate publication-ready social media content. Return ONLY the post content without any prefixes, explanations, or formatting markers.
+  const systemPrompt = `Generate publication-ready social media content. Return ONLY the post content without any prefixes, explanations, or formatting markers.
 
 PLATFORM: ${platform || 'General'}
 RULES: ${platform ? platformGuidelines[platform as keyof typeof platformGuidelines] : 'Follow general social media best practices'}
@@ -122,6 +116,13 @@ REQUIREMENTS:
 - Include emojis only if requested: ${context?.includeEmojis !== false}
 - No prefixes like "Here's your post:" or explanatory text
 - No markdown formatting or quotes around content`
+
+  try {
+    // Get the best model for content generation
+    let modelConfig = await AIModelManager.getModelForPurpose('content_generation')
+    
+    // If the default model fails due to credits, try to use a free model
+    let useFreeModel = false
 
     let completion
     try {
@@ -152,7 +153,7 @@ REQUIREMENTS:
       if (error?.status === 402 && !useFreeModel && error.message?.includes('credits')) {
         console.log('Retrying with free model due to credit exhaustion...')
         useFreeModel = true
-        modelConfig = await AIModelManager.getModelForPurpose('content_generation_free')
+        modelConfig = await AIModelManager.getFreeModelForPurpose('content_generation')
         
         completion = await aiService.chat.completions.create({
           model: modelConfig.model,
@@ -205,8 +206,7 @@ REQUIREMENTS:
         console.log(`🔄 Trying fallback model: ${fallbackModels[0].id}`)
 
         try {
-          // Alias for a previous typo in some call sites
-           const systemPrompt = systemPromtp       
+          // Alias retained historically; using canonical systemPrompt
           const fallbackCompletion = await aiService.chat.completions.create({
             model: fallbackModels[0].model,
             messages: [
