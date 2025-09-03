@@ -11,8 +11,8 @@ export const instagramConfig: InstagramConfig = {
   clientId: process.env.INSTAGRAM_CLIENT_ID || '',
   clientSecret: process.env.INSTAGRAM_CLIENT_SECRET || '',
   redirectUri: process.env.NODE_ENV === 'production'
-    ? `${process.env.NGROK_URL}/api/social/instagram/callback`
-    : 'https://48e4f61df4f3.ngrok-free.app/api/social/instagram/callback'
+    ? `${process.env.VERCEL_URL}/api/social/instagram/callback`
+    : 'https://syncrio.vercel.app/api/social/instagram/callback'
 } 
 
 // Instagram OAuth 2.0 URLs - Instagram API with Instagram Login (2024)

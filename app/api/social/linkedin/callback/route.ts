@@ -16,13 +16,13 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error('LinkedIn OAuth error:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=linkedin_oauth_failed`
+        `${process.env.VERCEL_URL}/dashboard?error=linkedin_oauth_failed`
       )
     }
 
     if (!code) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=missing_code`
+        `${process.env.VERCEL_URL}/dashboard?error=missing_code`
       )
     }
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/auth/signin?error=unauthorized`
+        `${process.env.VERCEL_URL}/auth/signin?error=unauthorized`
       )
     }
 
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=user_not_found`
+        `${process.env.VERCEL_URL}/dashboard?error=user_not_found`
       )
     }
 
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     
     if (accountCount >= limit) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=account_limit_reached`
+        `${process.env.VERCEL_URL}/dashboard?error=account_limit_reached`
       )
     }
 
@@ -101,18 +101,18 @@ export async function GET(req: NextRequest) {
 
       // Redirect to integrations page with success message
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?success=linkedin_connected`
+        `${process.env.VERCEL_URL}/integrations?success=linkedin_connected`
       )
     } catch (error) {
       console.error('LinkedIn token exchange failed:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=linkedin_connection_failed`
+        `${process.env.VERCEL_URL}/integrations?error=linkedin_connection_failed`
       )
     }
   } catch (error) {
     console.error('LinkedIn OAuth callback error:', error)
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/dashboard?error=oauth_callback_failed`
+      `${process.env.VERCEL_URL}/dashboard?error=oauth_callback_failed`
     )
   }
 }

@@ -71,7 +71,7 @@ export default function SignInPage() {
 
 
 
-<ThemeToggle className="h-6 w-16 mt-1" />
+<ThemeToggle className="h-4 w-16 mt-1" />
           </div>
         </div>
 

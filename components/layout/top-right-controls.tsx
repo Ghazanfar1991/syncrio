@@ -41,7 +41,7 @@ export function TopRightControls({
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       {/* Theme Toggle */}
-      <ThemeToggle className="h-8 w-16" />
+      <ThemeToggle className="h-6 w-16" />
 
       {/* Notifications */}
       <button className="relative p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/6 transition-colors">
