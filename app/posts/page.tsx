@@ -1108,17 +1108,7 @@ export default function PostsPage() {
                 <div className="flex items-center gap-2 ">
                   <div className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(post.status)} hover:scale-105 transition-transform duration-200 ${post.status === 'FAILED' ? 'animate-pulse' : ''}`}>
                     {getStatusIcon(post.status)} {post.status === 'FAILED' ? 'FAILED' : post.status}
-                  </div>
-                  {post.status === 'FAILED' && (
-                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200 animate-pulse">
-                      ⚠️ Needs Attention
-                    </div>
-                  )}
-                  {publishingPosts.has(post.id) && (
-                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 animate-pulse">
-                      🔄 Publishing...
-                    </div>
-                  )}
+                 
 
                 </div>
                 {isViewing && (

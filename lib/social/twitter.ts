@@ -103,15 +103,25 @@ export async function uploadMultipleTwitterMediaOAuth1a(
   accountId: string
 ): Promise<string[]> {
   console.log(`📸 [DEBUG] Starting multiple media upload to Twitter using OAuth 1.0a...`)
-  console.log(`📸 [DEBUG] Total images to upload: ${images.length}`)
+  console.log(`📸 [DEBUG] Total images requested: ${images.length}`)
+  // Only images are allowed when posting multiple media. Max 4 per tweet.
+  const imageOnly = images.filter(img => img.mimeType?.startsWith('image/'))
+  if (imageOnly.length !== images.length) {
+    console.warn(`⚠️ [DEBUG] Filtered out non-image media for multi-upload. Original: ${images.length}, Images only: ${imageOnly.length}`)
+  }
+  const toUpload = imageOnly.slice(0, 4)
+  if (imageOnly.length > 4) {
+    console.warn(`⚠️ [DEBUG] Truncating to first 4 images as per Twitter limits`)
+  }
+  console.log(`📸 [DEBUG] Images to upload after filtering/limits: ${toUpload.length}`)
   console.log(`📸 [DEBUG] User ID: ${userId}`)
   console.log(`📸 [DEBUG] Account ID: ${accountId}`)
   
   const mediaIds: string[] = []
   
-  for (let i = 0; i < images.length; i++) {
-    const image = images[i]
-    console.log(`📸 [DEBUG] Processing image ${i + 1}/${images.length}`)
+  for (let i = 0; i < toUpload.length; i++) {
+    const image = toUpload[i]
+    console.log(`📸 [DEBUG] Processing image ${i + 1}/${toUpload.length}`)
     console.log(`📸 [DEBUG] Image buffer size: ${image.buffer.length} bytes`)
     console.log(`📸 [DEBUG] Image MIME type: ${image.mimeType}`)
     
@@ -119,9 +129,9 @@ export async function uploadMultipleTwitterMediaOAuth1a(
       console.log(`📸 [DEBUG] Calling uploadTwitterMediaOAuth1a for image ${i + 1}...`)
       const mediaId = await uploadTwitterMediaOAuth1a(image.buffer, image.mimeType, userId, accountId)
       mediaIds.push(mediaId)
-      console.log(`✅ [DEBUG] Successfully uploaded image ${i + 1}/${images.length}, media_id: ${mediaId}`)
+      console.log(`✅ [DEBUG] Successfully uploaded image ${i + 1}/${toUpload.length}, media_id: ${mediaId}`)
     } catch (error) {
-      console.error(`❌ [DEBUG] Failed to upload image ${i + 1}/${images.length}:`, error)
+      console.error(`❌ [DEBUG] Failed to upload image ${i + 1}/${toUpload.length}:`, error)
       console.error(`❌ [DEBUG] Error details:`, error instanceof Error ? error.message : String(error))
       throw error
     }
@@ -138,14 +148,25 @@ export async function uploadMultipleTwitterMediaOAuth2(
   accessToken: string
 ): Promise<string[]> {
   console.log(`📸 [DEBUG] Starting multiple media upload to Twitter using OAuth 2.0...`)
-  console.log(`📸 [DEBUG] Total images to upload: ${images.length}`)
+  console.log(`📸 [DEBUG] Total images requested: ${images.length}`)
   console.log(`📸 [DEBUG] Access token length: ${accessToken.length}`)
+
+  // Only images are allowed when posting multiple media. Max 4 per tweet.
+  const imageOnly = images.filter(img => img.mimeType?.startsWith('image/'))
+  if (imageOnly.length !== images.length) {
+    console.warn(`⚠️ [DEBUG] Filtered out non-image media for multi-upload. Original: ${images.length}, Images only: ${imageOnly.length}`)
+  }
+  const toUpload = imageOnly.slice(0, 4)
+  if (imageOnly.length > 4) {
+    console.warn(`⚠️ [DEBUG] Truncating to first 4 images as per Twitter limits`)
+  }
+  console.log(`📸 [DEBUG] Images to upload after filtering/limits: ${toUpload.length}`)
 
   const mediaIds: string[] = []
 
-  for (let i = 0; i < images.length; i++) {
-    const image = images[i]
-    console.log(`📸 [DEBUG] Processing image ${i + 1}/${images.length}`)
+  for (let i = 0; i < toUpload.length; i++) {
+    const image = toUpload[i]
+    console.log(`📸 [DEBUG] Processing image ${i + 1}/${toUpload.length}`)
     console.log(`📸 [DEBUG] Image buffer size: ${image.buffer.length} bytes`)
     console.log(`📸 [DEBUG] Image MIME type: ${image.mimeType}`)
 
@@ -153,9 +174,9 @@ export async function uploadMultipleTwitterMediaOAuth2(
       console.log(`📸 [DEBUG] Calling uploadMediaWithOAuth2 for image ${i + 1}...`)
       const result = await uploadMediaWithOAuth2(accessToken, image.buffer, image.mimeType)
       mediaIds.push(result.media_id_string)
-      console.log(`✅ [DEBUG] Successfully uploaded image ${i + 1}/${images.length}, media_id: ${result.media_id_string}`)
+      console.log(`✅ [DEBUG] Successfully uploaded image ${i + 1}/${toUpload.length}, media_id: ${result.media_id_string}`)
     } catch (error) {
-      console.error(`❌ [DEBUG] Failed to upload image ${i + 1}/${images.length}:`, error)
+      console.error(`❌ [DEBUG] Failed to upload image ${i + 1}/${toUpload.length}:`, error)
       console.error(`❌ [DEBUG] Error details:`, error instanceof Error ? error.message : String(error))
       throw error
     }
@@ -608,7 +629,7 @@ export async function postTweet(
           try {
             console.log('🔄 [DEBUG] Processing images for Twitter using OAuth 2.0...')
             
-            const processedImages = processImagesForUpload(uniqueImages)
+            const processedImages = await processImagesForUpload(uniqueImages)
             console.log(`✅ [DEBUG] Processed ${processedImages.length} images for upload`)
             console.log(`✅ [DEBUG] Processed images details:`, processedImages.map((img: any) => ({
               bufferSize: img.buffer.length,
@@ -645,7 +666,7 @@ export async function postTweet(
         console.log('🔄 [DEBUG] Fallback imageUrl preview:', imageUrl.substring(0, 100) + '...')
         
         try {
-          const processedImages = processImagesForUpload(imageUrl)
+          const processedImages = await processImagesForUpload(imageUrl)
           console.log(`✅ [DEBUG] Processed ${processedImages.length} fallback images`)
           
           if (processedImages.length > 0) {
