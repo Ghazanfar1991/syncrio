@@ -56,7 +56,7 @@ export function getInstagramAuthUrl(userId: string, state?: string): string {
   const SCOPES =
     process.env.INSTAGRAM_SCOPES ||
     (USE_FACEBOOK_OAUTH
-      ? 'instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts'
+      ? 'instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_messages,instagram_manage_insights,pages_show_list,pages_read_engagement'
       : 'user_profile,user_media')
   const params = new URLSearchParams({
     client_id: instagramConfig.clientId,
@@ -101,17 +101,27 @@ export async function getLongLivedToken(shortLivedToken: string): Promise<{
   access_token: string
   expires_in: number
 }> {
-  const response = await fetch(
-    `${INSTAGRAM_API_BASE}/access_token?grant_type=ig_exchange_token&client_secret=${instagramConfig.clientSecret}&access_token=${shortLivedToken}`,
-    { method: 'GET' }
-  )
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Instagram long-lived token exchange failed: ${error}`)
+  if (USE_FACEBOOK_OAUTH) {
+    const url = `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(instagramConfig.clientId)}&client_secret=${encodeURIComponent(instagramConfig.clientSecret)}&fb_exchange_token=${encodeURIComponent(shortLivedToken)}`
+    const response = await fetch(url, { method: 'GET' })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Facebook long-lived token exchange failed: ${error}`)
+    }
+    return response.json()
+  } else {
+    const response = await fetch(
+      `${INSTAGRAM_API_BASE}/access_token?grant_type=ig_exchange_token&client_secret=${instagramConfig.clientSecret}&access_token=${shortLivedToken}`,
+      { method: 'GET' }
+    )
+  
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Instagram long-lived token exchange failed: ${error}`)
+    }
+  
+    return response.json()
   }
-
-  return response.json()
 }
 
 // Get Instagram user information
@@ -120,17 +130,54 @@ export async function getInstagramUser(accessToken: string): Promise<{
   username: string
   account_type: string
   media_count: number
+  page_access_token?: string
 }> {
-  const response = await fetch(
-    `${INSTAGRAM_API_BASE}/me?fields=id,username,account_type,media_count&access_token=${accessToken}`
-  )
-
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Failed to get Instagram user: ${error}`)
+  if (USE_FACEBOOK_OAUTH) {
+    // 1) Get user's Pages
+    const pagesRes = await fetch(`https://graph.facebook.com/v18.0/me/accounts?access_token=${encodeURIComponent(accessToken)}`)
+    if (!pagesRes.ok) {
+      const error = await pagesRes.text()
+      throw new Error(`Failed to list Facebook Pages: ${error}`)
+    }
+    const pages = await pagesRes.json()
+    // 2) Find a Page with a connected IG account
+    let igUserId: string | null = null
+    let pageAccessToken: string | null = null
+    for (const page of pages.data || []) {
+      const pageId = page.id
+      const pat = page.access_token
+      const connRes = await fetch(`https://graph.facebook.com/v18.0/${pageId}?fields=connected_instagram_account&access_token=${encodeURIComponent(pat)}`)
+      if (!connRes.ok) continue
+      const conn = await connRes.json()
+      if (conn.connected_instagram_account?.id) {
+        igUserId = conn.connected_instagram_account.id
+        pageAccessToken = pat
+        break
+      }
+    }
+    if (!igUserId || !pageAccessToken) {
+      throw new Error('No connected Instagram account found on any managed Page')
+    }
+    // 3) Fetch IG user details using page access token
+    const igRes = await fetch(`https://graph.facebook.com/v18.0/${igUserId}?fields=username,account_type,media_count&access_token=${encodeURIComponent(pageAccessToken)}`)
+    if (!igRes.ok) {
+      const error = await igRes.text()
+      throw new Error(`Failed to get Instagram user via Graph: ${error}`)
+    }
+    const igData = await igRes.json()
+    return { id: igUserId, username: igData.username, account_type: igData.account_type, media_count: igData.media_count, page_access_token: pageAccessToken }
+  } else {
+    const response = await fetch(
+      `${INSTAGRAM_API_BASE}/me?fields=id,username,account_type,media_count&access_token=${accessToken}`
+    )
+  
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Failed to get Instagram user: ${error}`)
+    }
+  
+    return response.json()
   }
-
-  return response.json()
 }
 
 // Upload base64 image to Cloudflare R2 and return public URL

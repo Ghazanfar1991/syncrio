@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
         accountName: instagramUser.username,
         displayName: instagramUser.username,
         username: instagramUser.username,
-        accessToken: longLivedTokens.access_token,
+        accessToken: (instagramUser as any).page_access_token || longLivedTokens.access_token,
         refreshToken: null,
         expiresAt: longLivedTokens.expires_in ? new Date(Date.now() + longLivedTokens.expires_in * 1000) : null,
         accountType: instagramUser.account_type === 'BUSINESS' ? 'BUSINESS' : 'PERSONAL',
@@ -106,4 +106,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard?error=oauth_callback_failed', req.url))
   }
 }
-
