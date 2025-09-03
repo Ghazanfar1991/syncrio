@@ -206,7 +206,7 @@ REQUIREMENTS:
 
         try {
           // Alias for a previous typo in some call sites
-          const systemPromtp = systemPrompt
+           const systemPrompt = systemPromtp       
           const fallbackCompletion = await aiService.chat.completions.create({
             model: fallbackModels[0].model,
             messages: [
