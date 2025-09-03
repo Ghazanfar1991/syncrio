@@ -58,4 +58,3 @@ export async function POST(req: NextRequest) {
     })
   )(req)
 }
-
