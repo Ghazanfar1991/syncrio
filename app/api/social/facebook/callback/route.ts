@@ -15,13 +15,13 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error('Facebook OAuth error:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=facebook_oauth_failed`
+        `${process.env.VERCEL_URL}/integrations?error=facebook_oauth_failed`
       )
     }
 
     if (!code) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=missing_code`
+        `${process.env.VERCEL_URL}/integrations?error=missing_code`
       )
     }
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/auth/signin?error=unauthorized`
+        `${process.env.VERCEL_URL}/auth/signin?error=unauthorized`
       )
     }
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=user_not_found`
+        `${process.env.VERCEL_URL}/integrations?error=user_not_found`
       )
     }
 
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
     
     if (accountCount >= limit) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=account_limit_reached`
+        `${process.env.VERCEL_URL}/integrations?error=account_limit_reached`
       )
     }
 
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
           client_id: process.env.FACEBOOK_CLIENT_ID || '',
           client_secret: process.env.FACEBOOK_CLIENT_SECRET || '',
           code,
-          redirect_uri: `${process.env.NEXTAUTH_URL}/api/social/facebook/callback`,
+          redirect_uri: `${process.env.VERCEL_URL}/api/social/facebook/callback`,
         })
       })
 
@@ -130,18 +130,18 @@ export async function GET(req: NextRequest) {
 
       // Redirect to integrations page with success message
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?success=facebook_connected`
+        `${process.env.VERCEL_URL}/integrations?success=facebook_connected`
       )
     } catch (error) {
       console.error('Facebook token exchange failed:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=facebook_connection_failed`
+        `${process.env.VERCEL_URL}/integrations?error=facebook_connection_failed`
       )
     }
   } catch (error) {
     console.error('Facebook OAuth callback error:', error)
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/integrations?error=oauth_callback_failed`
+      `${process.env.VERCEL_URL}/integrations?error=oauth_callback_failed`
     )
   }
 }

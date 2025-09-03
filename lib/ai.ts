@@ -205,9 +205,12 @@ REQUIREMENTS:
         console.log(`🔄 Trying fallback model: ${fallbackModels[0].id}`)
 
         try {
+          // Alias for a previous typo in some call sites
+          const systemPromtp = systemPrompt
           const fallbackCompletion = await aiService.chat.completions.create({
             model: fallbackModels[0].model,
             messages: [
+              { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
             ],
             max_tokens: fallbackModels[0].maxTokens,

@@ -16,13 +16,13 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error('YouTube OAuth error:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=youtube_oauth_failed`
+        `${process.env.VERCEL_URL}/dashboard?error=youtube_oauth_failed`
       )
     }
 
     if (!code) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=missing_code`
+        `${process.env.VERCEL_URL}/dashboard?error=missing_code`
       )
     }
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions)
     if (!session?.user?.email) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/auth/signin?error=unauthorized`
+        `${process.env.VERCEL_URL}/auth/signin?error=unauthorized`
       )
     }
 
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     if (!user) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=user_not_found`
+        `${process.env.VERCEL_URL}/dashboard?error=user_not_found`
       )
     }
 
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     
     if (accountCount >= limit) {
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/dashboard?error=account_limit_reached&current=${accountCount}&limit=${limit}`
+        `${process.env.VERCEL_URL}/dashboard?error=account_limit_reached&current=${accountCount}&limit=${limit}`
       )
     }
 
@@ -207,13 +207,13 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       console.error('YouTube token exchange failed:', error)
       return NextResponse.redirect(
-        `${process.env.NEXTAUTH_URL}/integrations?error=youtube_connection_failed&details=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`
+        `${process.env.VERCEL_URL}/integrations?error=youtube_connection_failed&details=${encodeURIComponent(error instanceof Error ? error.message : 'Unknown error')}`
       )
     }
   } catch (error) {
     console.error('YouTube OAuth callback error:', error)
     return NextResponse.redirect(
-      `${process.env.NEXTAUTH_URL}/dashboard?error=oauth_callback_failed`
+      `${process.env.VERCEL_URL}/dashboard?error=oauth_callback_failed`
     )
   }
 }
