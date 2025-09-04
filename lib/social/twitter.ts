@@ -486,6 +486,18 @@ export async function postTweetWithVideo(
     }
 
     console.log('[Twitter] Final tweet data:', JSON.stringify(tweetData, null, 2))
+    // Prefer v1.1 for multi-image tweets to ensure all images attach
+    if (tweetData?.media?.media_ids && Array.isArray(tweetData.media.media_ids) && tweetData.media.media_ids.length > 1 && userId && accountId) {
+      try {
+        console.log('[Twitter] Using v1.1 statuses/update for multi-image tweet...')
+        const { postTweetWithMediaIdsV11 } = await import('./twitter-multi')
+        const result = await postTweetWithMediaIdsV11({ text: uniqueContent, mediaIds: tweetData.media.media_ids, userId, accountId })
+        console.log('[Twitter] v1.1 tweet posted successfully:', result)
+        return { id: result.id, text: uniqueContent }
+      } catch (e) {
+        console.warn('[Twitter] v1.1 multi-image posting failed; falling back to v2...', e)
+      }
+    }
 
     const response = await fetch(`${TWITTER_API_BASE}/tweets`, {
       method: 'POST',
@@ -683,7 +695,19 @@ export async function postTweet(
 
   console.log('🐦 [DEBUG] Final tweet data before posting:', JSON.stringify(tweetData, null, 2))
   console.log('🐦 [DEBUG] Posting tweet to Twitter API...')
-  
+  // Prefer v1.1 for multi-image tweets to ensure all images attach
+  if (tweetData?.media?.media_ids && Array.isArray(tweetData.media.media_ids) && tweetData.media.media_ids.length > 1 && userId && accountId) {
+    try {
+      console.log('🐦 [DEBUG] Using v1.1 statuses/update for multi-image tweet...')
+      const { postTweetWithMediaIdsV11 } = await import('./twitter-multi')
+      const result = await postTweetWithMediaIdsV11({ text: uniqueContent, mediaIds: tweetData.media.media_ids, userId, accountId })
+      console.log('🐦 [DEBUG] v1.1 tweet posted successfully:', result)
+      return { id: result.id, text: uniqueContent }
+    } catch (e) {
+      console.warn('🐦 [DEBUG] v1.1 multi-image posting failed; falling back to v2...', e)
+    }
+  }
+
   const response = await fetch(`${TWITTER_API_BASE}/tweets`, {
     method: 'POST',
     headers: { 
