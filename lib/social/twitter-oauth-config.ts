@@ -1,7 +1,5 @@
 // Twitter OAuth 2.0 configuration and setup
 import crypto from 'crypto'
-import fs from 'fs'
-import path from 'path'
 
 export interface TwitterConfig {
   clientId: string
@@ -9,10 +7,18 @@ export interface TwitterConfig {
   redirectUri: string
 }
 
+// Compute a proper base URL (VERCEL_URL lacks protocol)
+const BASE_URL =
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.APP_URL ||
+  process.env.NEXTAUTH_URL ||
+  (process.env.VERCEL_URL ? `${process.env.VERCEL_URL}` : undefined) ||
+  'http://localhost:3000'
+
 export const twitterConfig: TwitterConfig = {
   clientId: process.env.TWITTER_CLIENT_ID || '',
   clientSecret: process.env.TWITTER_CLIENT_SECRET || '',
-  redirectUri: `${process.env.VERCEL_URL}/api/social/twitter/callback`
+  redirectUri: `${BASE_URL}/api/social/twitter/callback`
 }
 
 // Check if Twitter is configured
@@ -26,82 +32,65 @@ export const TWITTER_TOKEN_URL = 'https://api.x.com/2/oauth2/token'
 
 // Generate code verifier and challenge for PKCE
 function generateCodeVerifier(): string {
-  const array = new Uint8Array(32)
-  crypto.getRandomValues(array)
-  return Buffer.from(array).toString('base64url')
+  // 32 bytes -> base64url, 43-128 chars
+  return crypto
+    .randomBytes(32)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
 }
 
 function generateCodeChallenge(verifier: string): string {
-  const hash = crypto.createHash('sha256').update(verifier).digest()
-  return Buffer.from(hash).toString('base64url')
+  const hash = crypto.createHash('sha256').update(verifier).digest('base64')
+  return hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-// Temporary file-based storage for code verifiers
-const TEMP_DIR = path.join(process.cwd(), '.tmp')
-const VERIFIERS_FILE = path.join(TEMP_DIR, 'oauth-verifiers.json')
+// HMAC-signed state payload carrying short-lived PKCE verifier (no FS/cookies)
+const STATE_SECRET =
+  process.env.TWITTER_STATE_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  'dev-state-secret'
 
-function ensureTempDir() {
-  if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-  }
+type StatePayload = {
+  u: string // user id
+  v: string // code verifier
+  t: number // timestamp (ms)
+  s?: string // optional caller-provided state
 }
 
-function storeCodeVerifier(state: string, verifier: string) {
-  ensureTempDir()
-  let verifiers: Record<string, { verifier: string; expires: number }> = {}
-
-  if (fs.existsSync(VERIFIERS_FILE)) {
-    try {
-      verifiers = JSON.parse(fs.readFileSync(VERIFIERS_FILE, 'utf8'))
-    } catch (error) {
-      console.warn('Failed to read verifiers file:', error)
-    }
-  }
-
-  // Clean up expired verifiers
-  const now = Date.now()
-  Object.keys(verifiers).forEach(key => {
-    if (verifiers[key].expires < now) {
-      delete verifiers[key]
-    }
-  })
-
-  // Store new verifier with 10 minute expiration
-  verifiers[state] = {
-    verifier,
-    expires: now + 10 * 60 * 1000
-  }
-
-  fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
+function b64url(input: string | Buffer): string {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '')
 }
 
-function getCodeVerifier(state: string): string | null {
-  if (!fs.existsSync(VERIFIERS_FILE)) {
-    return null
-  }
+function sign(data: string): string {
+  const sig = crypto.createHmac('sha256', STATE_SECRET).update(data).digest('base64')
+  return sig.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
 
+function createSignedState(payload: StatePayload): string {
+  const json = JSON.stringify(payload)
+  const msg = b64url(json)
+  const sig = sign(msg)
+  return `${msg}.${sig}`
+}
+
+function parseSignedState(state: string): StatePayload | null {
   try {
-    const verifiers = JSON.parse(fs.readFileSync(VERIFIERS_FILE, 'utf8'))
-    const entry = verifiers[state]
-
-    if (!entry) {
-      return null
-    }
-
-    if (entry.expires < Date.now()) {
-      // Clean up expired entry
-      delete verifiers[state]
-      fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
-      return null
-    }
-
-    // Clean up used verifier
-    delete verifiers[state]
-    fs.writeFileSync(VERIFIERS_FILE, JSON.stringify(verifiers, null, 2))
-
-    return entry.verifier
-  } catch (error) {
-    console.warn('Failed to read verifier:', error)
+    const [msg, sig] = state.split('.')
+    if (!msg || !sig) return null
+    const expected = sign(msg)
+    if (sig !== expected) return null
+    const json = Buffer.from(msg.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    const payload = JSON.parse(json) as StatePayload
+    // 10 minute TTL
+    if (Date.now() - payload.t > 10 * 60 * 1000) return null
+    return payload
+  } catch {
     return null
   }
 }
@@ -112,8 +101,7 @@ export function getTwitterAuthUrl(userId: string, state?: string): string {
   const codeChallenge = generateCodeChallenge(codeVerifier)
 
   // Store the code verifier temporarily
-  const stateValue = state || userId
-  storeCodeVerifier(stateValue, codeVerifier)
+  const stateValue = createSignedState({ u: userId, v: codeVerifier, t: Date.now(), s: state })
 
   const params = new URLSearchParams({
     response_type: 'code',
@@ -138,8 +126,9 @@ export async function exchangeTwitterCode(code: string, state: string): Promise<
   console.log('🔄 State:', state)
   console.log('🔄 Code length:', code.length)
 
-  // Get the stored code verifier
-  const codeVerifier = getCodeVerifier(state)
+  // Extract the code verifier from the signed state
+  const payload = parseSignedState(state)
+  const codeVerifier = payload?.v
 
   if (!codeVerifier) {
     console.error('❌ Code verifier not found for state:', state)
@@ -157,6 +146,7 @@ export async function exchangeTwitterCode(code: string, state: string): Promise<
     body: new URLSearchParams({
       grant_type: 'authorization_code',
       code,
+      client_id: twitterConfig.clientId,
       redirect_uri: twitterConfig.redirectUri,
       code_verifier: codeVerifier
     })
