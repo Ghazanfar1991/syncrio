@@ -608,7 +608,7 @@ export async function postTweet(
           try {
             console.log('🔄 [DEBUG] Processing images for Twitter using OAuth 2.0...')
             
-            const processedImages = processImagesForUpload(uniqueImages)
+            const processedImages = await processImagesForUpload(uniqueImages)
             console.log(`✅ [DEBUG] Processed ${processedImages.length} images for upload`)
             console.log(`✅ [DEBUG] Processed images details:`, processedImages.map((img: any) => ({
               bufferSize: img.buffer.length,
@@ -645,7 +645,7 @@ export async function postTweet(
         console.log('🔄 [DEBUG] Fallback imageUrl preview:', imageUrl.substring(0, 100) + '...')
         
         try {
-          const processedImages = processImagesForUpload(imageUrl)
+          const processedImages = await processImagesForUpload(imageUrl)
           console.log(`✅ [DEBUG] Processed ${processedImages.length} fallback images`)
           
           if (processedImages.length > 0) {

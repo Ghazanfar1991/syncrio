@@ -122,7 +122,7 @@ async function processLinkedInImages(imageInput: string | string[]): Promise<Arr
           console.warn('LinkedIn: Base64 images are not supported, converting to buffer for upload')
           
           // Convert base64 to buffer using the image-upload utility
-          const result = processImagesForUpload(imageUrl)
+          const result =  await processImagesForUpload(imageUrl)
           if (result.length > 0) {
             const image = result[0]
             const validation = validateImageForUpload(image.buffer, image.mimeType, 'LINKEDIN')
