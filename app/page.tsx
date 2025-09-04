@@ -9,7 +9,7 @@ import {
   ShieldCheck, Sun, Moon, Sparkles, Play, Check, ArrowRight, ChevronLeft, ChevronRight,
   Send, Clock,
 } from "lucide-react";
-import { TestimonialsSection as TestimonialsMarqueeSection } from "@/components/ui/testimonials-with-marquee";
+// Local marquee for testimonials with continuous right-to-left animation
 
 // Single-file, production-ready landing page component for "Syncrio      <section id="pricing" className="relative z-10 py-14 bg-gradient-to-b from-transparent via-zinc-50/50 to-transparent dark:via-zinc-900/50">
 
@@ -670,6 +670,67 @@ function Badge({ children }: any) {
   );
 }
 
+// Continuous marquee (right -> left) for testimonials with improved card UI
+function TestimonialsMarquee({
+  testimonials,
+  speed = 20,
+}: {
+  testimonials: Array<{
+    author: { name: string; handle?: string; avatar?: string };
+    text: string;
+    href?: string;
+  }>;
+  speed?: number; // seconds to traverse half-length
+}) {
+  const loop = [...testimonials, ...testimonials];
+  return (
+    <div className="relative overflow-hidden">
+      {/* edge fades */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-white to-transparent dark:from-zinc-900" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white to-transparent dark:from-zinc-900" />
+
+      <motion.div
+        className="flex w-max gap-3 sm:gap-5 [will-change:transform]"
+        animate={{ x: ["0%", "-50%"] }}
+        transition={{ duration: speed, ease: "linear", repeat: Infinity }}
+      >
+        {loop.map((t, i) => (
+          <a
+            key={`${t.author.name}-${i}`}
+            href={t.href || undefined}
+            target={t.href ? "_blank" : undefined}
+            rel={t.href ? "noreferrer" : undefined}
+            className="min-w-[220px] sm:min-w-[260px] md:min-w-[300px] lg:min-w-[320px] max-w-[360px]"
+          >
+            <div className="h-full rounded-2xl border border-zinc-200/70 bg-white/80 p-4 sm:p-5 ring-1 ring-black/5 shadow-sm backdrop-blur-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-zinc-800/70 dark:bg-zinc-900/60 dark:ring-white/10">
+              <div className="flex items-center gap-3">
+                <img
+                  src={t.author.avatar || "/avatar-fallback.png"}
+                  alt={t.author.name}
+                  className="h-9 w-9 rounded-full object-cover ring-2 ring-white dark:ring-zinc-800"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">{t.author.name}</div>
+                  {t.author.handle && (
+                    <div className="text-xs text-muted-foreground truncate">{t.author.handle}</div>
+                  )}
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
+                <span className="mr-1 text-zinc-400">“</span>
+                {t.text}
+                <span className="ml-1 text-zinc-400">”</span>
+              </p>
+            </div>
+          </a>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
 export default function AuroraLanding() {
   const { theme, toggleTheme } = useTheme();
   const dark = theme === 'dark';
@@ -683,19 +744,20 @@ export default function AuroraLanding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-r from-rose-50 to-pink-50 text-zinc-900 antialiased dark:from-zinc-950 dark:to-black dark:text-zinc-100">
+      <div className="pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       <AuroraGlow />
 
       {/* Nav */}
       <header className="relative z-10">
-<div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-5 md:px-6">
+<div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:py-5 md:px-6">
   <div className="flex items-center gap-3">
-    <div className="relative h-14 w-14 overflow-hidden rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
+    <div className="relative h-12 w-12 sm:h-14 sm:w-14 overflow-hidden rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
       {/* Logo Image */}
-      <img src="/applogo.PNG" alt="Syncrio Logo" className="w-full h-full" />
+      <img src="/applogo.PNG" alt="Syncrio Logo" className="w-full h-full object-contain" loading="lazy" decoding="async" />
     </div>
     <div>
-      <span className="text-lg font-semibold tracking-tight">Syncrio</span>
-      <div className="text-sm text-zinc-500">Your AI Powered Social Amplifier</div> {/* Tagline */}
+      <span className="text-base sm:text-lg font-semibold tracking-tight">Syncrio</span>
+      <div className="text-xs sm:text-sm text-zinc-500">Your AI Powered Social Amplifier</div> {/* Tagline */}
     </div>
   </div>
 
@@ -732,7 +794,7 @@ export default function AuroraLanding() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
-                className="text-4xl font-semibold leading-tight md:text-6xl"
+                className="text-3xl sm:text-4xl md:text-6xl font-semibold leading-tight"
               >
                 Create, schedule & grow with <span className="bg-gradient-to-r from-rose-500 via-purple-600 to-pink-600 bg-clip-text text-transparent">Syncrio</span>
               </motion.h1>
@@ -770,7 +832,7 @@ export default function AuroraLanding() {
               whileHover={{ scale: 1.01, rotate: 0.2 }}
               transition={{ duration: 0.6 }}
             >
-              <Card className="relative mx-auto max-w-md overflow-hidden p-4 shadow-2xl">
+              <Card className="relative mx-auto max-w-md overflow-hidden p-4 sm:p-5 shadow-2xl">
                 {/* decorative orbs */}
                 <div aria-hidden className="pointer-events-none absolute -top-10 -left-12 h-28 w-28 rounded-full bg-gradient-to-tr from-fuchsia-500/25 to-cyan-500/25 blur-2xl" />
                 <div aria-hidden className="pointer-events-none absolute -bottom-12 -right-10 h-32 w-32 rounded-full bg-gradient-to-tr from-indigo-500/25 to-emerald-500/25 blur-2xl" />
@@ -893,7 +955,7 @@ export default function AuroraLanding() {
 
           {/* Integrations */}
           <div className="mt-14">
-            <p className="mb-10 text-center text-2xl font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="mb-10 text-center text-xl sm:text-2xl font-bold uppercase tracking-wider text-muted-foreground">
               Connect your social accounts
             </p>
             <div className="mx-auto max-w-5xl pt-2">
@@ -909,7 +971,7 @@ export default function AuroraLanding() {
           <SectionHeading eyebrow="Features" title="Everything you need to grow">
             Craft content with AI, schedule across platforms, and understand what performs—without the busywork.
           </SectionHeading>
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:gap-6">
             {features.map((f) => (
               <FeatureCard key={f.title} feature={f} />
             ))}
@@ -922,7 +984,7 @@ export default function AuroraLanding() {
         <div className="mx-auto max-w-7xl px-4 md:px-6">
           <SectionHeading eyebrow="Workflow" title="How it works — a quick preview" />
 
-          <div className="mt-10 grid gap-6 md:grid-cols-4">
+          <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-4 sm:gap-6">
             {[{
               icon: Zap, title: "Connect accounts", desc: "Link Facebook, LinkedIn, X, Instagram, YouTube in seconds.", preview: <StepMockConnect />,
             }, {
@@ -939,10 +1001,10 @@ export default function AuroraLanding() {
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 0.5, delay: i * 0.06 }}
               >
-                <Card className="h-full p-6">
+                <Card className="h-full p-4 sm:p-6">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-xl p-2.5 bg-gradient-to-br from-white to-zinc-50 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-zinc-800 dark:to-zinc-900">
-                      <Icon className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
+                    <div className="rounded-xl p-2 bg-gradient-to-br from-white to-zinc-50 shadow-sm transition-all duration-200 group-hover:shadow-md dark:from-zinc-800 dark:to-zinc-900">
+                      <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-zinc-700 dark:text-zinc-300" />
                     </div>
                     <h3 className="text-lg font-semibold">{title}</h3>
                   </div>
@@ -965,9 +1027,9 @@ export default function AuroraLanding() {
               Real feedback from teams using Syncrio to create, schedule, and grow faster.
             </SectionHeading>
           </div>
-          <div className="-mt-25 -mb-25">
-            {/* Marquee testimonials under the existing heading (no extra header) */}
-            <TestimonialsMarqueeSection
+          <div className="mt-0 mb-0">
+            {/* Continuous right-to-left marquee with improved cards */}
+            <TestimonialsMarquee
               testimonials={[
                 {
                   author: {
@@ -1013,28 +1075,40 @@ export default function AuroraLanding() {
             Start free, upgrade when you’re ready. Cancel anytime.
           </SectionHeading>
 
-          <div className="mt-10 grid gap-6 md:grid-cols-3">
+          <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3 sm:gap-6">
             {tiers.map((t) => (
               <Card
                 key={t.name}
-                className={`p-6 ${t.highlighted ? "ring-2 ring-zinc-900 dark:ring-zinc-100" : ""}`}
+                className={`p-4 sm:p-6 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl ${
+                  t.highlighted ? "ring-2 ring-rose-400/50 dark:ring-rose-500/40" : ""
+                }`}
               >
-                <div className="flex items-start justify-between">
+                {/* top accent bar */}
+                <div
+                  className={`h-1 rounded-full ${
+                    t.highlighted
+                      ? "bg-gradient-to-r from-rose-500 to-pink-500"
+                      : "bg-gradient-to-r from-zinc-200/70 to-zinc-100/50 dark:from-zinc-800/50 dark:to-zinc-700/40"
+                  }`}
+                />
+                <div className="mt-4 flex items-start justify-between">
                   <div>
                     <h3 className="text-lg font-semibold">{t.name}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">{t.tagline}</p>
                   </div>
                   {t.highlighted && <Badge>Most popular</Badge>}
                 </div>
-                <div className="mt-6 text-3xl font-semibold">{t.price}</div>
-                <ul className="mt-6 space-y-2 text-sm">
+                <div className="mt-5 text-3xl font-semibold">{t.price}</div>
+                <ul className="mt-5 space-y-2 text-sm">
                   {t.features.map((f) => (
                     <li key={f} className="flex items-center gap-2">
-                      <Check className="h-4 w-4" /> {f}
+                      <Check className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 dark:text-emerald-400" /> {f}
                     </li>
                   ))}
                 </ul>
-                <CTAButton className="mt-6 w-full">{t.cta}</CTAButton>
+                <CTAButton className={`mt-6 w-full ${t.highlighted ? "bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:from-rose-600 hover:to-pink-600" : ""}`}>
+                  {t.cta}
+                </CTAButton>
               </Card>
             ))}
           </div>
@@ -1062,7 +1136,7 @@ export default function AuroraLanding() {
       {/* Call to action */}
       <section className="relative z-10 py-16">
         <div className="mx-auto max-w-4xl px-4 text-center md:px-6">
-          <h3 className="text-2xl font-semibold md:text-3xl">Ready to grow your social presence?</h3>
+          <h3 className="text-xl sm:text-2xl font-semibold md:text-3xl">Ready to grow your social presence?</h3>
           <p className="mt-3 text-sm text-muted-foreground">
             Start creating with AI, schedule across platforms, and track results in minutes.
           </p>
@@ -1081,8 +1155,8 @@ export default function AuroraLanding() {
   <div>
     <div className="flex items-center gap-3">
       {/* Logo Image instead of gradient background */}
-      <div className="relative h-7 w-7 overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
-        <img src="/applogo.png" alt="Syncrio Logo" className="w-full h-full" />
+      <div className="relative h-7 w-7 sm:h-8 sm:w-8 overflow-hidden rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
+        <img src="/applogo.png" alt="Syncrio Logo" className="w-full h-full object-contain" loading="lazy" decoding="async" />
       </div>
       <span className="text-lg font-semibold tracking-tight">
         Syncrio
@@ -1126,8 +1200,9 @@ export default function AuroraLanding() {
               </ul>
             </div>
           </div>
-        </div>
+    </div>
       </footer>
+    </div>
     </div>
   );
 }

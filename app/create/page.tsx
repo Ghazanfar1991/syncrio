@@ -740,12 +740,12 @@ export default function CreatePage() {
 
     console.log('📹 Starting video upload for:', account.platform)
 
-    // Validate file size (100MB limit for R2 upload)
-    const maxSize = 100 * 1024 * 1024 // 100MB
+    // Validate file size (increased to 500MB to better support mobile-shot videos)
+    const maxSize = 500 * 1024 * 1024 // 500MB
     if (videoFile.size > maxSize) {
       toast({
         title: "File Too Large",
-        description: `Video file is ${Math.round(videoFile.size / 1024 / 1024)}MB. Maximum size is 100MB.`,
+        description: `Video file is ${Math.round(videoFile.size / 1024 / 1024)}MB. Maximum size is 500MB.`,
         variant: "destructive"
       })
       return
@@ -761,10 +761,12 @@ export default function CreatePage() {
     })
 
     try {
-      // Create FormData for upload
+      // Create FormData for upload (include metadata to help server set correct content-type/filename)
       const formData = new FormData()
       formData.append('video', videoFile)
       formData.append('platform', account.platform)
+      formData.append('fileName', videoFile.name)
+      formData.append('contentType', videoFile.type || 'application/octet-stream')
 
       // Upload to R2
       const response = await fetch('/api/upload/video', {
@@ -3480,7 +3482,7 @@ export default function CreatePage() {
                                               >
                                                 <input
                                                   type="file"
-                                                  accept="video/*"
+                                                  accept="video/*,video/quicktime,video/mp4,video/x-matroska,video/webm,video/3gpp,video/3gpp2"
                                                   onChange={(e) => e.target.files && handleVideoUpload(account.id, e.target.files)}
                                                   className="hidden"
                                                   id={`video-upload-${account.id}`}
@@ -3509,6 +3511,9 @@ export default function CreatePage() {
                                                     preload="metadata"
                                                     playsInline
                                                     muted
+                                                    onError={(e) => {
+                                                      console.warn('Video preview failed to load. Some mobile formats (e.g., HEVC/MOV) may not preview in all browsers.', e)
+                                                    }}
                                                   />
                                                 </div>
                                                 <button
@@ -3856,11 +3861,11 @@ export default function CreatePage() {
                                             >
                                               <input
                                                 type="file"
-                                                accept="video/*"
-                                                onChange={(e) => e.target.files && handleVideoUpload(account.id, e.target.files)}
-                                                className="hidden"
-                                                id={`video-upload-${account.id}`}
-                                              />
+                                                  accept="video/*,video/quicktime,video/mp4,video/x-matroska,video/webm,video/3gpp,video/3gpp2"
+                                                  onChange={(e) => e.target.files && handleVideoUpload(account.id, e.target.files)}
+                                                  className="hidden"
+                                                  id={`video-upload-${account.id}`}
+                                                />
                                               <label htmlFor={`video-upload-${account.id}`} className="cursor-pointer flex flex-col items-center gap-3">
                                                 <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-orange-600 rounded-2xl flex items-center justify-center">
                                                   <Upload className="h-6 w-6 text-white" />
@@ -3886,6 +3891,9 @@ export default function CreatePage() {
                                                   preload="metadata"
                                                   playsInline
                                                   muted
+                                                  onError={(e) => {
+                                                    console.warn('Video preview failed to load. Some mobile formats (e.g., HEVC/MOV) may not preview in all browsers.', e)
+                                                  }}
                                                 />
                                               </div>
                                               <button
