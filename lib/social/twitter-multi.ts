@@ -130,6 +130,57 @@ export async function postTweetWithMediaIdsV11(args: {
   return { id: data.id_str || data.id?.toString?.() || '', raw: data }
 }
 
+// Post a tweet with media IDs using OAuth 1.0a credentials from environment variables
+export async function postTweetWithMediaIdsV11Env(args: {
+  text: string
+  mediaIds: string[]
+}): Promise<{ id: string; raw: any }> {
+  const { text, mediaIds } = args
+  const media = mediaIds.slice(0, 4)
+  if (!media.length) throw new Error('mediaIds is empty')
+
+  const envConsumerKey = process.env.TWITTER_CONSUMER_KEY
+  const envConsumerSecret = process.env.TWITTER_CONSUMER_SECRET
+  const envAccessToken = process.env.TWITTER_ACCESS_TOKEN
+  const envAccessTokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET
+
+  if (!envConsumerKey || !envConsumerSecret || !envAccessToken || !envAccessTokenSecret) {
+    throw new Error('Missing OAuth1 env credentials for v1.1 tweet (TWITTER_CONSUMER_KEY/SECRET, TWITTER_ACCESS_TOKEN/SECRET)')
+  }
+
+  const url = 'https://api.twitter.com/1.1/statuses/update.json'
+  const params: Record<string, string> = {
+    status: text,
+    media_ids: media.join(','),
+  }
+
+  const { authorization } = signOAuth1Request('POST', url, params, {
+    consumerKey: envConsumerKey,
+    consumerSecret: envConsumerSecret,
+    token: envAccessToken,
+    tokenSecret: envAccessTokenSecret,
+  })
+
+  const body = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => body.append(k, v))
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: authorization,
+    },
+    body: body.toString(),
+  })
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`Tweet post failed ${res.status}: ${res.statusText} ${txt}`)
+  }
+  const data = await res.json()
+  return { id: data.id_str || data.id?.toString?.() || '', raw: data }
+}
+
 // End-to-end: process and upload images, then post tweet with all media attached
 export async function postTweetWithMultipleImages(input: UploadInput): Promise<{ id: string; mediaIds: string[] }> {
   const { text, images, userId, accountId } = input
