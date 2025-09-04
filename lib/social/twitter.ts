@@ -472,16 +472,83 @@ export async function postTweetWithVideo(
         }
       }
     }
-    // Handle image upload if provided (and no video)
-    else if (imageUrl && userId && accountId && !videoUrl) {
-      console.log('[Twitter] Processing images...')
-      const processedImages = await processImagesForUpload(imageUrl)
+    // Handle image upload (no video): collect from both imageUrl and images columns
+    else if (userId && accountId && !videoUrl) {
+      try {
+        console.log('[Twitter] Processing images from database (imageUrl + images)...')
 
-      if (processedImages.length > 0) {
-        const mediaIds = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
-        if (mediaIds.length > 0) {
-          tweetData.media = { media_ids: mediaIds }
+        // Try to locate the post by exact content first
+        const cleanContent = content.trim()
+        let post = await db.post.findFirst({
+          where: { content: cleanContent, userId: userId },
+          select: { id: true, imageUrl: true, images: true, createdAt: true, content: true },
+          orderBy: { createdAt: 'desc' }
+        })
+
+        if (!post) {
+          console.log('[Twitter] Post not found by content; trying most recent DRAFT/SCHEDULED post...')
+          post = await db.post.findFirst({
+            where: { userId: userId, status: { in: ['DRAFT', 'SCHEDULED'] } },
+            select: { id: true, imageUrl: true, images: true, createdAt: true, content: true },
+            orderBy: { createdAt: 'desc' }
+          })
         }
+
+        const allImages: string[] = []
+        if (post) {
+          console.log('[Twitter] Post found for image aggregation:', { id: post.id, hasImageUrl: !!post.imageUrl, hasImages: !!post.images })
+          if (post.imageUrl) {
+            allImages.push(post.imageUrl)
+          }
+          if (post.images) {
+            try {
+              if (Array.isArray((post as any).images)) {
+                allImages.push(...((post as any).images as string[]))
+              } else if (typeof (post as any).images === 'string') {
+                const imagesArray = JSON.parse((post as any).images)
+                if (Array.isArray(imagesArray)) {
+                  allImages.push(...imagesArray)
+                }
+              }
+            } catch (parseErr) {
+              console.warn('[Twitter] Failed to parse images JSON field:', parseErr)
+            }
+          }
+        }
+
+        // Fallback: include provided imageUrl param if any
+        if (imageUrl) {
+          allImages.push(imageUrl)
+        }
+
+        const uniqueImages = Array.from(new Set(allImages.filter(Boolean)))
+        console.log(`[Twitter] Total unique images collected: ${uniqueImages.length}`)
+
+        if (uniqueImages.length > 0) {
+          const processedImages = await processImagesForUpload(uniqueImages)
+          if (processedImages.length > 0) {
+            // Upload via OAuth 1.0a using DB credentials; fallback to OAuth 2.0 if needed. Cap to 4 IDs.
+            let mediaIdsRaw: string[] = []
+            try {
+              mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId, accountId)
+            } catch (e) {
+              console.warn('[Twitter] OAuth 1.0a upload failed, trying OAuth 2.0 fallback...', e)
+              mediaIdsRaw = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
+            }
+            const mediaIds = Array.from(new Set(mediaIdsRaw.filter(Boolean).map(String))).slice(0, 4)
+            if (mediaIds.length > 0) {
+              tweetData.media = { media_ids: mediaIds }
+            } else {
+              console.warn('[Twitter] No media IDs returned after upload')
+            }
+          } else {
+            console.warn('[Twitter] No valid images after processing')
+          }
+        } else {
+          console.log('[Twitter] No images found in DB or parameters; skipping media')
+        }
+      } catch (err) {
+        console.error('[Twitter] Error while aggregating/uploading images:', err)
       }
     }
 
@@ -608,11 +675,18 @@ export async function postTweet(
         }
         if (post.images) {
           try {
-            const imagesArray = JSON.parse(post.images)
-            if (Array.isArray(imagesArray)) { 
+            if (Array.isArray((post as any).images)) {
+              const imagesArray = (post as any).images as string[]
               allImages.push(...imagesArray)
               console.log(`➕ [DEBUG] Added ${imagesArray.length} images from images column`)
               console.log(`➕ [DEBUG] Images array preview:`, imagesArray.map((img: string) => img.substring(0, 50) + '...'))
+            } else if (typeof (post as any).images === 'string') {
+              const imagesArray = JSON.parse((post as any).images)
+              if (Array.isArray(imagesArray)) { 
+                allImages.push(...imagesArray)
+                console.log(`➕ [DEBUG] Added ${imagesArray.length} images from images column`)
+                console.log(`➕ [DEBUG] Images array preview:`, imagesArray.map((img: string) => img.substring(0, 50) + '...'))
+              }
             }
           } catch (parseError) { 
             console.warn('⚠️ [DEBUG] Failed to parse images field:', parseError)
@@ -627,7 +701,7 @@ export async function postTweet(
           try {
             console.log('🔄 [DEBUG] Processing images for Twitter using OAuth 2.0...')
             
-            const processedImages = processImagesForUpload(uniqueImages)
+            const processedImages = await processImagesForUpload(uniqueImages)
             console.log(`✅ [DEBUG] Processed ${processedImages.length} images for upload`)
             console.log(`✅ [DEBUG] Processed images details:`, processedImages.map((img: any) => ({
               bufferSize: img.buffer.length,
@@ -636,9 +710,15 @@ export async function postTweet(
             
             if (processedImages.length > 0) {
               console.log(`📤 [DEBUG] Starting upload of ${processedImages.length} images to Twitter...`)
-              console.log(`📤 [DEBUG] Calling uploadMultipleTwitterMediaOAuth2...`)
+              console.log(`📤 [DEBUG] Attempting upload via OAuth 1.0a with DB creds...`)
 
-              const mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
+              let mediaIdsRaw: string[] = []
+              try {
+                mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
+              } catch (e) {
+                console.warn('⚠️ [DEBUG] OAuth 1.0a upload failed; using OAuth 2.0 fallback', e)
+                mediaIdsRaw = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
+              }
               const mediaIds = Array.from(new Set(mediaIdsRaw.filter(Boolean).map(String))).slice(0, 4)
 
               if (mediaIds.length > 0) {
@@ -665,12 +745,18 @@ export async function postTweet(
         console.log('🔄 [DEBUG] Fallback imageUrl preview:', imageUrl.substring(0, 100) + '...')
         
         try {
-          const processedImages = processImagesForUpload(imageUrl)
+          const processedImages = await processImagesForUpload(imageUrl)
           console.log(`✅ [DEBUG] Processed ${processedImages.length} fallback images`)
           
           if (processedImages.length > 0) {
             console.log(`📤 [DEBUG] Uploading ${processedImages.length} fallback images to Twitter...`)
-            const mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
+            let mediaIdsRaw: string[] = []
+            try {
+              mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
+            } catch (e) {
+              console.warn('⚠️ [DEBUG] OAuth 1.0a upload failed; using OAuth 2.0 fallback', e)
+              mediaIdsRaw = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
+            }
             const mediaIds = Array.from(new Set(mediaIdsRaw.filter(Boolean).map(String))).slice(0, 4)
 
             if (mediaIds.length > 0) {

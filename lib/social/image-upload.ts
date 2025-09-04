@@ -1,6 +1,26 @@
 // Image upload utilities for social media platforms
 import { Buffer } from 'buffer'
 
+// Fetch a remote image URL into a Buffer
+async function fetchUrlToBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string; size: number } | null> {
+  try {
+    console.log('🌐 [DEBUG] Fetching image URL:', url.substring(0, 120) + (url.length > 120 ? '...' : ''))
+    const res = await fetch(url)
+    if (!res.ok) {
+      console.error('❌ [DEBUG] Failed to fetch image URL. Status:', res.status, res.statusText)
+      return null
+    }
+    const ct = res.headers.get('content-type') || 'image/jpeg'
+    const ab = await res.arrayBuffer()
+    const buffer = Buffer.from(ab)
+    console.log('🌐 [DEBUG] Fetched image. Bytes:', buffer.length, 'MIME:', ct)
+    return { buffer, mimeType: ct.split(';')[0].trim(), size: buffer.length }
+  } catch (err) {
+    console.error('❌ [DEBUG] Error fetching image URL:', err)
+    return null
+  }
+}
+
 export interface ImageUploadResult {
   success: boolean
   mediaId?: string
@@ -136,7 +156,7 @@ export function validateImageForUpload(imageBuffer: Buffer, mimeType: string, pl
 }
 
 // Process images for upload (convert base64 to buffers)
-export function processImagesForUpload(images: string | string[]): Array<{ buffer: Buffer; mimeType: string; size: number }> {
+export async function processImagesForUpload(images: string | string[]): Promise<Array<{ buffer: Buffer; mimeType: string; size: number }>> {
   console.log('🖼️ [DEBUG] ===== STARTING IMAGE PROCESSING =====')
   console.log('🖼️ [DEBUG] Input images type:', typeof images)
   console.log('🖼️ [DEBUG] Input images length:', Array.isArray(images) ? images.length : 1)
@@ -169,7 +189,20 @@ export function processImagesForUpload(images: string | string[]): Array<{ buffe
         console.warn(`⚠️ [DEBUG] Failed to process base64 image ${i + 1}:`, image.substring(0, 100))
       }
     } else {
-      console.warn(`⚠️ [DEBUG] Skipping non-base64 image ${i + 1}:`, image.substring(0, 50))
+      console.log(`🖼️ [DEBUG] Attempting to fetch non-base64 image ${i + 1} from URL`)
+      const fetched = await fetchUrlToBuffer(image)
+      if (fetched) {
+        // Validate basic size/format for TWITTER
+        const validation = validateImageForUpload(fetched.buffer, fetched.mimeType, 'TWITTER')
+        if (validation.valid) {
+          processedImages.push(fetched)
+          console.log(`✅ [DEBUG] Added fetched URL image ${i + 1} to processed array`)
+        } else {
+          console.warn(`⚠️ [DEBUG] URL image ${i + 1} failed validation:`, validation.error)
+        }
+      } else {
+        console.warn(`⚠️ [DEBUG] Failed to fetch image URL for image ${i + 1}`)
+      }
     }
   }
   
