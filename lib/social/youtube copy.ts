@@ -10,7 +10,7 @@ export interface YouTubeConfig {
 export const youtubeConfig: YouTubeConfig = {
   clientId: process.env.YOUTUBE_CLIENT_ID || '',
   clientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
-  redirectUri: `${process.env.NEXTAUTH_URL}/api/social/youtube/callback`
+  redirectUri: `${process.env.VERCEL_URL}/api/social/youtube/callback`
 }
 
 // Check if YouTube is configured
@@ -1300,4 +1300,5 @@ export async function testYouTubeAPIConnection(accessToken: string): Promise<{
     }
   }
 }
+
 
