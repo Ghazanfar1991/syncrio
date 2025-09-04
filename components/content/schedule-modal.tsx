@@ -7,7 +7,7 @@ import { Calendar, Clock, Sparkles, X, RotateCcw } from "lucide-react";
 interface ScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSchedule: (scheduledAt: string) => void;
+  onSchedule: (scheduledAt: string) => void | Promise<void>;
   postId?: string;
   postContent?: string;
   isLoading?: boolean;
@@ -35,6 +35,7 @@ export function ScheduleModal({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Set initial values when modal opens
   useEffect(() => {
@@ -50,17 +51,25 @@ export function ScheduleModal({
     }
   }, [isRescheduling, targetDate, aiSuggestedTimes]);
 
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (date && time) {
       const scheduledAt = `${date}T${time}:00`;
-      onSchedule(scheduledAt);
-      // Don't close modal here - let the parent handle it after successful save
+      try {
+        setSubmitting(true);
+        await Promise.resolve(onSchedule(scheduledAt));
+        // Close immediately on success; parent shows toast
+        onClose();
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
   const quickTimes = ["09:00", "12:00", "18:00"];
 
   if (!isOpen) return null;
+
+  const loading = isLoading ?? submitting;
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/40 backdrop-blur-md">
@@ -229,17 +238,17 @@ export function ScheduleModal({
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
           <button
             onClick={onClose}
-            disabled={isLoading}
+            disabled={loading}
             className="px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSchedule}
-            disabled={!date || !time || isLoading}
+            disabled={!date || !time || loading}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-md hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            {loading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2 inline-block" />
                 {isRescheduling ? "Rescheduling..." : "Scheduling..."}

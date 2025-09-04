@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -91,6 +91,10 @@ export default function PostsPage() {
   const [publishingPosts, setPublishingPosts] = useState<Set<string>>(new Set())
   const [publishedPosts, setPublishedPosts] = useState<Set<string>>(new Set())
   const [collapsed, setCollapsed] = useState(false)
+  const hasLoadedRef = useRef(false)
+  const sessionReadyRef = useRef(false)
+  const [userDateOverride, setUserDateOverride] = useState(false)
+  const dateInitializedRef = useRef(false)
 
 
 
@@ -118,10 +122,13 @@ export default function PostsPage() {
     }
   }, [])
 
-  // Update date range when filter changes
+  // Keep a ref of session readiness to use inside stable listeners
   useEffect(() => {
-    resetDateRange()
-  }, [filter, posts])
+    sessionReadyRef.current = Boolean(session)
+  }, [session])
+
+  // Removed effect that called resetDateRange to avoid TDZ and ensure
+  // date range updates synchronously via handlers and fetchPosts
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -149,6 +156,32 @@ export default function PostsPage() {
     return () => document.removeEventListener('keydown', handleEscape)
   }, [showDeleteModal, showViewModal, showEditModal, showScheduleModal])
 
+  // Refresh posts in the background when tab gains focus or becomes visible
+  // Keep dependency array stable to avoid HMR hook warnings
+  useEffect(() => {
+    const onFocus = () => {
+      if (sessionReadyRef.current) fetchPosts(true)
+    }
+    const onVisible = () => {
+      if (!document.hidden && sessionReadyRef.current) fetchPosts(true)
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
+  // Initialize default date range once on first data load unless user already set custom dates
+  useEffect(() => {
+    if (hasLoadedRef.current && !dateInitializedRef.current && !userDateOverride) {
+      resetDateRange(filter, posts)
+      dateInitializedRef.current = true
+    }
+  }, [posts, filter, userDateOverride])
+
 
 
   // Early returns after all hooks are called
@@ -170,8 +203,8 @@ export default function PostsPage() {
     redirect('/auth/signin')
   }
 
-  const fetchPosts = async () => {
-    setLoading(true)
+  async function fetchPosts(background: boolean = hasLoadedRef.current) {
+    if (!background) setLoading(true)
     try {
       const response = await fetch('/api/posts')
       const data = await response.json()
@@ -190,9 +223,12 @@ export default function PostsPage() {
     } catch (error) {
       console.error('Failed to fetch posts:', error)
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
+      hasLoadedRef.current = true
     }
   }
+
+  
 
   // Get user display name and username
   const getUserDisplayName = () => {
@@ -213,19 +249,19 @@ export default function PostsPage() {
   };
 
   // Clean up duplicate posts in the database
-  const cleanupDuplicatePosts = async () => {
+  async function cleanupDuplicatePosts() {
     try {
       const response = await fetch('/api/posts/cleanup-duplicates', {
         method: 'POST'
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.cleanedCount > 0) {
           console.log(`🧹 Cleaned up ${data.cleanedCount} duplicate posts`)
           // Refresh posts after cleanup
           setTimeout(() => {
-            fetchPosts()
+            fetchPosts(true)
           }, 1000)
         }
       }
@@ -362,6 +398,8 @@ export default function PostsPage() {
       if (response.ok) {
         const message = isReschedule ? 'Post rescheduled successfully!' : 'Post scheduled successfully!'
         showToastMessage(message, 'success')
+        // Close modal immediately on success
+        closeScheduleModal()
         
         // Clean up any duplicate drafts for this post
         await cleanupDuplicateDrafts(schedulingPost.id)
@@ -675,44 +713,54 @@ export default function PostsPage() {
     return unique
   }, [])
 
+  // Helper to parse YYYY-MM-DD as local date safely
+  function parseDateOnly(dateStr: string, endOfDay = false): Date | null {
+    if (!dateStr) return null
+    const parts = dateStr.split('-').map(Number)
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null
+    const [y, m, d] = parts
+    return endOfDay
+      ? new Date(y, m - 1, d, 23, 59, 59, 999)
+      : new Date(y, m - 1, d, 0, 0, 0, 0)
+  }
+
   const filteredPosts = deduplicatedPosts.filter(post => {
-    console.log('Filtering post:', { id: post.id, status: post.status, filter, createdAt: post.createdAt, scheduledAt: post.scheduledAt, publishedAt: post.publishedAt })
-    
+    // console.debug('Filtering post:', { id: post.id, status: post.status, filter, createdAt: post.createdAt, scheduledAt: post.scheduledAt, publishedAt: post.publishedAt })
+
     // Filter by status
     const statusMatch = 
       (filter === 'drafts' && (post.status === 'DRAFT' || post.status === 'FAILED')) ||
       (filter === 'scheduled' && post.status === 'SCHEDULED') ||
       (filter === 'published' && post.status === 'PUBLISHED')
     
-    console.log('Status match:', statusMatch, 'Post status:', post.status, 'Filter:', filter)
+    // console.debug('Status match:', statusMatch, 'Post status:', post.status, 'Filter:', filter)
     
     if (!statusMatch) return false
     
     // Filter by date range based on post status
     let postDate: Date
-    let dateFieldUsed: string
+    // let dateFieldUsed: string
     
     if (filter === 'scheduled' && post.scheduledAt) {
       // For scheduled posts, use scheduledAt
       postDate = new Date(post.scheduledAt)
-      dateFieldUsed = 'scheduledAt'
+      // dateFieldUsed = 'scheduledAt'
     } else if (filter === 'published' && post.publishedAt) {
       // For published posts, use publishedAt
       postDate = new Date(post.publishedAt)
-      dateFieldUsed = 'publishedAt'
+      // dateFieldUsed = 'publishedAt'
     } else {
       // For drafts or if specific date field is missing, use createdAt
       postDate = new Date(post.createdAt)
-      dateFieldUsed = 'createdAt'
+      // dateFieldUsed = 'createdAt'
     }
-    
-    const startDate = new Date(dateRange.start)
-    const endDate = new Date(dateRange.end)
-    endDate.setHours(23, 59, 59, 999) // Include the entire end date
-    
-    const dateMatch = postDate >= startDate && postDate <= endDate
-    console.log('Date match:', dateMatch, 'Post date:', postDate, 'Range:', startDate, 'to', endDate, 'Field used:', dateFieldUsed)
-    
+
+    const startDate = parseDateOnly(dateRange.start, false)
+    const endDate = parseDateOnly(dateRange.end, true)
+
+    const dateMatch = (!startDate || postDate >= startDate) && (!endDate || postDate <= endDate)
+    // console.debug('Date match:', dateMatch, 'Post date:', postDate, 'Range:', startDate, 'to', endDate, 'Field used:', dateFieldUsed)
+
     return dateMatch
   })
 
@@ -738,15 +786,22 @@ export default function PostsPage() {
     return analytics.reduce((total, metric) => total + metric.impressions, 0)
   }
 
-  // Function to reset date range based on current filter
-  const resetDateRange = useCallback(() => {
-    if (filter === 'drafts') {
+  // Function to reset date range based on current or provided filter/posts
+  function resetDateRange(
+    nextFilter: 'drafts' | 'scheduled' | 'published' = filter,
+    sourcePosts: Post[] = posts
+  ) {
+    if (nextFilter === 'drafts') {
       // For drafts, find the first draft date and set range from there to next 30 days
-      const draftPosts = posts.filter(post => post.status === 'DRAFT' || post.status === 'FAILED')
+      const draftPosts = sourcePosts.filter(
+        (post) => post.status === 'DRAFT' || post.status === 'FAILED'
+      )
       if (draftPosts.length > 0) {
-        const firstDraftDate = new Date(Math.min(...draftPosts.map(post => new Date(post.createdAt).getTime())))
+        const firstDraftDate = new Date(
+          Math.min(...draftPosts.map((post) => new Date(post.createdAt).getTime()))
+        )
         const endDate = new Date(firstDraftDate.getTime() + 30 * 24 * 60 * 60 * 1000)
-        
+
         setDateRange({
           start: firstDraftDate.toISOString().split('T')[0],
           end: endDate.toISOString().split('T')[0],
@@ -758,11 +813,11 @@ export default function PostsPage() {
           end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         })
       }
-    } else if (filter === 'published') {
+    } else if (nextFilter === 'published') {
       // For published posts, show last 30 days from today
       const endDate = new Date()
       const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      
+
       setDateRange({
         start: startDate.toISOString().split('T')[0],
         end: endDate.toISOString().split('T')[0],
@@ -774,7 +829,7 @@ export default function PostsPage() {
         end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       })
     }
-  }, [filter, posts])
+  }
 
   // Helper function to safely parse hashtags for display
   const getDisplayHashtags = (hashtags: any): string[] => {
@@ -961,7 +1016,7 @@ export default function PostsPage() {
       {/* Filters and Date Picker in a single row */}
       <div className="flex flex-wrap -mb-2 items-center gap-3 p-3 rounded-2xl bg-white/40 dark:bg-neutral-800/30 hover:bg-white/50 dark:hover:bg-neutral-800/40 transition-colors duration-200">
        
-      {[
+  {[ 
           { key: 'drafts', label: 'Drafts', count: posts.filter((p) => p.status === 'DRAFT' || p.status === 'FAILED').length },
   { key: 'scheduled', label: 'Scheduled', count: posts.filter((p) => p.status === 'SCHEDULED').length },
           { key: 'published', label: 'Published', count: posts.filter((p) => p.status === 'PUBLISHED').length },
@@ -970,7 +1025,13 @@ export default function PostsPage() {
   return (
     <button
       key={filterOption.key}
-      onClick={() => setFilter(filterOption.key as 'drafts' | 'scheduled' | 'published')}
+      onClick={() => {
+        const next = filterOption.key as 'drafts' | 'scheduled' | 'published'
+        setFilter(next)
+        if (!userDateOverride) {
+          resetDateRange(next)
+        }
+      }}
       className={`px-3 py-2 rounded-lg transition-all duration-200 text-sm border flex items-center gap-1
         ${
           isSelected
@@ -997,7 +1058,10 @@ export default function PostsPage() {
           <input
             type="date"
             value={dateRange.start}
-            onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
+            onChange={(e) => {
+              setDateRange((prev) => ({ ...prev, start: e.target.value }))
+              setUserDateOverride(true)
+            }}
             className="px-3 py-2 rounded-lg border border-black/10 dark:border-white/10 bg-white/60 dark:bg-neutral-800/60 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all duration-200"
           />
         </div>
@@ -1006,13 +1070,16 @@ export default function PostsPage() {
           <input
             type="date"
             value={dateRange.end}
-            onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
+            onChange={(e) => {
+              setDateRange((prev) => ({ ...prev, end: e.target.value }))
+              setUserDateOverride(true)
+            }}
             className="px-3 py-2 rounded-lg border border-black/10 dark:border-white/10 bg-white/60 dark:bg-neutral-800/60 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all duration-200"
           />
         </div>
         {filter === 'drafts' ? (
           <button
-            onClick={resetDateRange}
+            onClick={() => { setUserDateOverride(false); resetDateRange() }}
             className="px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:scale-105 active:scale-95 rounded-lg transition-all duration-200"
             title="Reset to first draft date + 30 days"
           >
@@ -1020,7 +1087,7 @@ export default function PostsPage() {
           </button>
         ) : filter === 'published' ? (
           <button
-            onClick={resetDateRange}
+            onClick={() => { setUserDateOverride(false); resetDateRange() }}
             className="px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:scale-105 active:scale-95 rounded-lg transition-all duration-200"
             title="Reset to last 30 days from today"
           >
@@ -1028,7 +1095,7 @@ export default function PostsPage() {
           </button>
         ) : (
           <button
-            onClick={resetDateRange}
+            onClick={() => { setUserDateOverride(false); resetDateRange() }}
             className="px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:scale-105 active:scale-95 rounded-lg transition-all duration-200"
             title="Reset to next 30 days from today"
           >
@@ -1106,20 +1173,11 @@ export default function PostsPage() {
   {/* Status and Actions */}
               <div className="flex items-center justify-between mb-3 flex-shrink-0 -mt-10 ml-40 -mr-10">
                 <div className="flex items-center gap-2 ">
-                  <div className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(post.status)} hover:scale-105 transition-transform duration-200 ${post.status === 'FAILED' ? 'animate-pulse' : ''}`}>
-                    {getStatusIcon(post.status)} {post.status === 'FAILED' ? 'FAILED' : post.status}
-                  </div>
-                  {post.status === 'FAILED' && (
-                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-red-100 text-red-800 border border-red-200 animate-pulse">
-                      ⚠️ Needs Attention
+                  {(post.status === 'DRAFT' || post.status === 'SCHEDULED') && (
+                    <div className={`px-2 py-1 rounded-lg text-[10px] font-medium ${getStatusColor(post.status)} hover:scale-105 transition-transform duration-200`}>
+                      {getStatusIcon(post.status)} {post.status}
                     </div>
                   )}
-                  {publishingPosts.has(post.id) && (
-                    <div className="px-2 py-1 rounded-lg text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 animate-pulse">
-                      🔄 Publishing...
-                    </div>
-                  )}
-
                 </div>
                 {isViewing && (
                   <div className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-400">
@@ -1131,10 +1189,10 @@ export default function PostsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                       <button 
-                        className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/6 mr-6 mt-1"
+                        className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/6 mr-7 mt-1"
                         onClick={(e) => e.stopPropagation()}
                       >
-                              <MoreVertical className="h-4 w-3" />
+                              <MoreVertical className="h-5 w-5" />
                       </button>
                           </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-xl border border-black/5 dark:border-white/5 shadow-lg">

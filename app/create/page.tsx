@@ -181,6 +181,40 @@ const COMPATIBLE_GROUPS = [
   ['YOUTUBE', 'TIKTOK'], // Video content
 ] as const
 
+// Hashtag helpers for Manual Create
+function normalizeHashtags(input: string | string[]): string[] {
+  const tokens = Array.isArray(input) ? input : input.split(/[\,\s]+/)
+  const cleaned = tokens
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (t.startsWith('#') ? t : `#${t}`))
+    .map((t) => t.replace(/^#+/, '#'))
+    // keep letters, numbers, underscore; drop others
+    .map((t) => t.replace(/[^\p{L}\p{N}_#]/gu, ''))
+    .filter((t) => t.length > 1)
+
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const tag of cleaned) {
+    const key = tag.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      deduped.push(tag)
+    }
+  }
+  return deduped
+}
+
+function appendHashtagsToContent(content: string, tags: string[]): string {
+  if (!tags.length) return content
+  const present = new Set(
+    (content.match(/#[\p{L}\p{N}_]+/gu) || []).map((s) => s.toLowerCase())
+  )
+  const newTags = tags.filter((t) => !present.has(t.toLowerCase()))
+  if (!newTags.length) return content
+  return `${content.trim()}\n\n${newTags.join(' ')}`
+}
+
 export default function CreatePage() {
   const { data: session, status } = useSession()
   const { toast } = useToast()
@@ -1279,6 +1313,8 @@ export default function CreatePage() {
         // Use account-specific content if available, otherwise use general content
         const contentToSave = accountContent?.content || manualState.generalContent || ''
         const hashtagsToSave = accountContent?.hashtags || []
+        const normalizedTags = normalizeHashtags(hashtagsToSave)
+        const contentWithTags = appendHashtagsToContent(contentToSave, normalizedTags)
 
         // Check if there's either text content, video content, or YouTube title
         const hasTextContent = contentToSave.trim()
@@ -1313,8 +1349,8 @@ export default function CreatePage() {
         }
 
         const postData = {
-          content: contentToSave.trim() || null, // Send null instead of empty string
-          hashtags: hashtagsToSave,
+          content: contentWithTags.trim() || null, // Send null instead of empty string
+          hashtags: normalizedTags,
           images: imageUrls,
           imageUrl: imageUrls[0] || null, // First image (thumbnail for YouTube)
           videos: videoUrls,
@@ -1324,7 +1360,10 @@ export default function CreatePage() {
           // Include YouTube-specific fields
           ...(account.platform === 'YOUTUBE' && {
             title: accountContent?.title || 'Untitled Video',
-            description: accountContent?.description || contentToSave.trim() || ''
+            description: accountContent?.description || contentWithTags.trim() || '',
+            tags: (
+              (Array.isArray(accountContent?.tags) ? accountContent?.tags : normalizedTags) || []
+            ).map((t: string) => t.replace(/^#+/, ''))
           })
           // Note: No scheduledAt for drafts
         }
@@ -1455,6 +1494,8 @@ export default function CreatePage() {
         // Use account-specific content if available, otherwise use general content
         const contentToSchedule = accountContent?.content || manualState.generalContent || ''
         const hashtagsToSchedule = accountContent?.hashtags || []
+        const normalizedTags = normalizeHashtags(hashtagsToSchedule)
+        const contentWithTags = appendHashtagsToContent(contentToSchedule, normalizedTags)
 
         // Check if there's either text content, video content, or YouTube title
         const hasTextContent = contentToSchedule.trim()
@@ -1489,8 +1530,8 @@ export default function CreatePage() {
         }
 
         const postData = {
-          content: contentToSchedule.trim() || null, // Send null instead of empty string
-          hashtags: hashtagsToSchedule,
+          content: contentWithTags.trim() || null, // Send null instead of empty string
+          hashtags: normalizedTags,
           images: imageUrls,
           imageUrl: imageUrls[0] || null, // First image (thumbnail for YouTube)
           videos: videoUrls,
@@ -1501,7 +1542,10 @@ export default function CreatePage() {
           // Include YouTube-specific fields
           ...(account.platform === 'YOUTUBE' && {
             title: accountContent?.title || 'Untitled Video',
-            description: accountContent?.description || contentToSchedule.trim() || ''
+            description: accountContent?.description || contentWithTags.trim() || '',
+            tags: (
+              (Array.isArray(accountContent?.tags) ? accountContent?.tags : normalizedTags) || []
+            ).map((t: string) => t.replace(/^#+/, ''))
           })
         }
 
@@ -1629,6 +1673,8 @@ export default function CreatePage() {
         // Use account-specific content if available, otherwise use general content
         const contentToPublish = accountContent?.content || manualState.generalContent || ''
         const hashtagsToPublish = accountContent?.hashtags || []
+        const normalizedTags = normalizeHashtags(hashtagsToPublish)
+        const contentWithTags = appendHashtagsToContent(contentToPublish, normalizedTags)
 
         if (!contentToPublish.trim()) {
           console.log(`Skipping ${account.platform} - no content`)
@@ -1654,8 +1700,8 @@ export default function CreatePage() {
         }
 
         const postData = {
-          content: contentToPublish,
-          hashtags: hashtagsToPublish,
+          content: contentWithTags,
+          hashtags: normalizedTags,
           images: imageUrls,
           imageUrl: imageUrls[0] || null,
           videos: videoUrls,
@@ -3290,12 +3336,17 @@ export default function CreatePage() {
                                         />
                                       </div>
                                       <div className="space-y-2">
-                                        <Label className="text-base font-medium text-gray-900 dark:text-white">Tags <span className="text-red-500">*</span></Label>
-                                        <Input
-                                          placeholder="tag1, tag2, tag3 (comma-separated)"
-                                          value={Array.isArray(accountContent.tags) ? accountContent.tags.join(', ') : ''}
-                                          onChange={(e) => handleAccountContentChange(account.id, 'tags', e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag))}
-                                          className="text-base border-2 border-gray-200/60 dark:border-gray-700/60 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 rounded-xl bg-white/60 dark:bg-neutral-800/60"
+                                        <Label className="text-base font-medium text-gray-900 dark:text-white">Tags</Label>
+                                        <HashtagInput
+                                          value={Array.isArray(accountContent.tags) ? accountContent.tags : (Array.isArray(accountContent.hashtags) ? accountContent.hashtags : [])}
+                                          onChange={(tags) => {
+                                            handleAccountContentChange(account.id, 'tags', tags)
+                                            // Keep YouTube tags in sync with hashtags so they behave like other platforms
+                                            handleAccountContentChange(account.id, 'hashtags', tags)
+                                          }}
+                                          placeholder="Add tags..."
+                                          className="text-base border-2 border-gray-200/60 dark:border-gray-700/60 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-200 dark:focus-within:ring-blue-800 bg-white/60 dark:bg-neutral-800/60"
+                                          maxTags={30}
                                         />
                                       </div>
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
