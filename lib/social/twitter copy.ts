@@ -619,8 +619,7 @@ export async function postTweet(
               console.log(`📤 [DEBUG] Starting upload of ${processedImages.length} images to Twitter...`)
               console.log(`📤 [DEBUG] Calling uploadMultipleTwitterMediaOAuth2...`)
 
-              const mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
-              const mediaIds = Array.from(new Set(mediaIdsRaw.filter(Boolean).map(String))).slice(0, 4)
+              const mediaIds = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
 
               if (mediaIds.length > 0) {
                 tweetData = { text: uniqueContent, media: { media_ids: mediaIds } }
@@ -651,8 +650,7 @@ export async function postTweet(
           
           if (processedImages.length > 0) {
             console.log(`📤 [DEBUG] Uploading ${processedImages.length} fallback images to Twitter...`)
-            const mediaIdsRaw = await uploadMultipleTwitterMediaOAuth1a(processedImages, userId!, accountId!)
-            const mediaIds = Array.from(new Set(mediaIdsRaw.filter(Boolean).map(String))).slice(0, 4)
+            const mediaIds = await uploadMultipleTwitterMediaOAuth2(processedImages, accessToken)
 
             if (mediaIds.length > 0) {
               tweetData = { text: uniqueContent, media: { media_ids: mediaIds } }
