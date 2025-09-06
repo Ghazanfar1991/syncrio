@@ -31,13 +31,14 @@ export async function GET(req: Request) {
   const fbErrorDesc = url.searchParams.get('error_description')
   if (fbError) {
     log('OAuth error from Facebook:', fbError, fbErrorDesc)
-    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed`, origin))
+    const detail = Buffer.from(String(fbErrorDesc || fbError), 'utf8').toString('base64')
+    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed&error_detail=${encodeURIComponent(detail)}`, origin))
   }
 
   const code = url.searchParams.get('code')
   if (!code) {
     log('Missing code in callback URL')
-    return NextResponse.redirect(new URL(`/integrations?error=missing_code`, origin))
+    return NextResponse.redirect(new URL(`/integrations?error=missing_code&error_detail=${encodeURIComponent(Buffer.from('Missing code', 'utf8').toString('base64'))}`, origin))
   }
 
   try {
@@ -180,9 +181,17 @@ export async function GET(req: Request) {
       hasToken: !!userToken,
       hasFbProfileId: !!fbProfileId,
     })
-    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed`, origin))
+    const reason = !appUserId
+      ? 'Missing app userId (include state with userId or ensure session)'
+      : !fbProfileId
+      ? 'Missing Facebook profile id'
+      : 'Missing token'
+    const detail = Buffer.from(reason, 'utf8').toString('base64')
+    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed&error_detail=${encodeURIComponent(detail)}`, origin))
   } catch (err: any) {
-    console.error('[FB_CALLBACK] Callback error:', err?.message || err)
-    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed`, origin))
+    const msg = err?.message || String(err)
+    console.error('[FB_CALLBACK] Callback error:', msg)
+    const detail = Buffer.from(msg, 'utf8').toString('base64')
+    return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed&error_detail=${encodeURIComponent(detail)}`, origin))
   }
 }

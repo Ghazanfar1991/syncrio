@@ -160,6 +160,7 @@ export default function IntegrationsPage() {
     const urlParams = new URLSearchParams(window.location.search)
     const success = urlParams.get('success')
     const error = urlParams.get('error')
+    const errorDetail = urlParams.get('error_detail')
     
     if (success) {
       setMessage({ type: 'success', text: getSuccessMessage(success) })
@@ -168,7 +169,14 @@ export default function IntegrationsPage() {
       // Refresh accounts list after successful connection
       fetchSocialAccounts()
     } else if (error) {
-      setMessage({ type: 'error', text: getErrorMessage(error) })
+      let text = getErrorMessage(error)
+      if (errorDetail) {
+        try {
+          const decoded = atob(errorDetail)
+          if (decoded) text += ` — ${decoded}`
+        } catch {}
+      }
+      setMessage({ type: 'error', text })
       // Clear URL parameter
       window.history.replaceState({}, document.title, window.location.pathname)
     }

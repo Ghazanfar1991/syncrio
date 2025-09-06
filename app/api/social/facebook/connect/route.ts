@@ -15,9 +15,17 @@ export async function GET(req: Request) {
     }
 
     const url = getFacebookAuthUrl({ state, redirectUri })
+    let resolvedRedirectUri: string | undefined
+    try {
+      const oauth = new URL(url)
+      resolvedRedirectUri = oauth.searchParams.get('redirect_uri') || undefined
+    } catch {}
 
     // Return JSON matching frontend expectations: data.authUrl
-    return NextResponse.json({ success: true, data: { authUrl: url } })
+    return NextResponse.json({
+      success: true,
+      data: { authUrl: url, meta: { redirectUri: resolvedRedirectUri } },
+    })
   } catch (err: any) {
     const message =
       err?.message || 'Facebook integration not configured. Please contact administrator.'
@@ -49,7 +57,15 @@ export async function POST(req: Request) {
     }
 
     const url = getFacebookAuthUrl({ state, redirectUri })
-    return NextResponse.json({ success: true, data: { authUrl: url } })
+    let resolvedRedirectUri: string | undefined
+    try {
+      const oauth = new URL(url)
+      resolvedRedirectUri = oauth.searchParams.get('redirect_uri') || undefined
+    } catch {}
+    return NextResponse.json({
+      success: true,
+      data: { authUrl: url, meta: { redirectUri: resolvedRedirectUri } },
+    })
   } catch (err: any) {
     const message =
       err?.message || 'Facebook integration not configured. Please contact administrator.'
