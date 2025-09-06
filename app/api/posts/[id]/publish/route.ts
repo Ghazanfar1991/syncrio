@@ -8,7 +8,15 @@ import { createInstagramMedia, createInstagramVideo, createInstagramImage, getMe
 import { uploadYouTubeVideo } from '@/lib/social/youtube'
 import { TokenManager } from '@/lib/social/token-manager'
 import { AccountType } from '@prisma/client'
-import { postToFacebookPage, getUserPages } from '@/lib/social/facebook'
+import {
+  postToFacebookPage,
+  getUserPages,
+  uploadUnpublishedPhoto,
+  createFeedWithAttachedMedia,
+  postVideoToFacebookPage,
+  uploadUnpublishedPhotoBinary,
+  uploadPhotoBinaryPublished,
+} from '@/lib/social/facebook'
 
 // Minimal local types to improve type safety without changing behavior
 type PostPublicationLite = { id: string; status: string; socialAccountId: string }
@@ -302,27 +310,107 @@ export async function POST(
                 }
 
                 // Prepare media
-                const fbImage = combinePostImages(post)
-                const rawImageUrl = Array.isArray(fbImage) ? fbImage[0] : fbImage
-                const imageUrl = resolveHttpUrl(typeof rawImageUrl === 'string' ? rawImageUrl : undefined)
-                if (rawImageUrl && !imageUrl) {
-                  console.warn('⚠️ PUBLISH ENDPOINT: Facebook image URL is not a public http(s) URL; posting without image:', rawImageUrl)
-                }
+                // Prepare media arrays
+                const fbImages = combinePostImages(post)
+                const fbVideos = combinePostVideos(post)
 
                 // Optional scheduling: if you have a scheduledAt field, convert to unix seconds
                 const scheduledPublishTime = undefined as number | undefined
 
-                const fbRes = await postToFacebookPage({
-                  pageId: pageId!,
-                  message: contentWithHashtags,
-                  linkUrl: undefined,
-                  imageUrl,
-                  scheduledPublishTime,
-                  pageAccessToken,
-                  userAccessToken,
-                })
-
-                platformPostId = fbRes.id
+                if (fbVideos) {
+                  const videoUrlRaw = Array.isArray(fbVideos) ? fbVideos[0] : fbVideos
+                  const videoUrl = resolveHttpUrl(videoUrlRaw)
+                  if (!videoUrl) {
+                    throw new Error('Facebook video URL must be a public http(s) URL')
+                  }
+                  const vRes = await postVideoToFacebookPage(pageId!, videoUrl, {
+                    description: contentWithHashtags,
+                    pageAccessToken,
+                    userAccessToken,
+                    scheduledPublishTime,
+                  })
+                  platformPostId = vRes.id
+                } else if (Array.isArray(fbImages) && fbImages.length > 1) {
+                  // Multi-photo post via attached_media (up to 10)
+                  const candidates = Array.isArray(fbImages) ? fbImages.slice(0, 10) : []
+                  const mediaFbids: string[] = []
+                  for (const c of candidates) {
+                    const val = typeof c === 'string' ? c : undefined
+                    if (!val) continue
+                    if (val.startsWith('data:image') || /^[A-Za-z0-9+/=]+$/.test(val)) {
+                      try {
+                        const up = await uploadUnpublishedPhotoBinary(pageId!, val, {
+                          pageAccessToken,
+                          userAccessToken,
+                          caption: undefined,
+                          scheduledPublishTime,
+                        })
+                        mediaFbids.push(up.id)
+                      } catch (e) {
+                        console.warn('⚠️ Skipping base64 image upload:', (e as any)?.message || e)
+                      }
+                    } else {
+                      const url = resolveHttpUrl(val)
+                      if (url) {
+                        try {
+                          const up = await uploadUnpublishedPhoto(pageId!, url, {
+                            pageAccessToken,
+                            userAccessToken,
+                            caption: undefined,
+                            scheduledPublishTime,
+                          })
+                          mediaFbids.push(up.id)
+                        } catch (e) {
+                          console.warn('⚠️ Skipping URL image upload:', (e as any)?.message || e)
+                        }
+                      }
+                    }
+                  }
+                  if (mediaFbids.length === 0) {
+                    const feed = await postToFacebookPage({
+                      pageId: pageId!,
+                      message: contentWithHashtags,
+                      pageAccessToken,
+                      userAccessToken,
+                      scheduledPublishTime,
+                    })
+                    platformPostId = feed.id
+                  } else {
+                    const feed = await createFeedWithAttachedMedia(pageId!, mediaFbids, {
+                      message: contentWithHashtags,
+                      pageAccessToken,
+                      userAccessToken,
+                      scheduledPublishTime,
+                    })
+                    platformPostId = feed.id
+                  }
+                } else {
+                  // Single photo or text-only
+                  const rawImage = Array.isArray(fbImages) ? fbImages[0] : fbImages
+                  if (typeof rawImage === 'string' && (rawImage.startsWith('data:image') || /^[A-Za-z0-9+/=]+$/.test(rawImage))) {
+                    const photo = await uploadPhotoBinaryPublished(pageId!, rawImage, {
+                      pageAccessToken,
+                      userAccessToken,
+                      caption: contentWithHashtags,
+                    })
+                    platformPostId = photo.post_id || photo.id
+                  } else {
+                    const imageUrl = resolveHttpUrl(typeof rawImage === 'string' ? rawImage : undefined)
+                    if (rawImage && !imageUrl) {
+                      console.warn('⚠️ PUBLISH ENDPOINT: Facebook image URL is not a public http(s) URL; posting without image:', rawImage)
+                    }
+                    const fbRes = await postToFacebookPage({
+                      pageId: pageId!,
+                      message: contentWithHashtags,
+                      linkUrl: undefined,
+                      imageUrl,
+                      scheduledPublishTime,
+                      pageAccessToken,
+                      userAccessToken,
+                    })
+                    platformPostId = fbRes.id
+                  }
+                }
                 console.log(`✅ PUBLISH ENDPOINT: Facebook post successful! ID: ${platformPostId}`)
                 break
               }

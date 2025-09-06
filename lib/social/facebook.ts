@@ -283,3 +283,150 @@ export async function refreshFacebookToken(
     expires_in: res.expires_in,
   }
 }
+
+// ---------- Advanced posting helpers ----------
+
+export async function ensurePageToken(
+  pageId: string,
+  pageAccessToken?: string,
+  userAccessToken?: string
+): Promise<string> {
+  if (pageAccessToken) return pageAccessToken
+  if (!userAccessToken) throw new Error('pageAccessToken or userAccessToken is required')
+  const token = await getPageAccessToken(pageId, userAccessToken)
+  if (!token) throw new Error('Unable to obtain page access token')
+  return token
+}
+
+export async function uploadUnpublishedPhoto(
+  pageId: string,
+  imageUrl: string,
+  opts: { pageAccessToken?: string; userAccessToken?: string; caption?: string; scheduledPublishTime?: number }
+): Promise<{ id: string; post_id?: string }> {
+  const { graphVersion } = readEnv()
+  const accessToken = await ensurePageToken(pageId, opts.pageAccessToken, opts.userAccessToken)
+  const body = new URLSearchParams()
+  body.set('access_token', accessToken)
+  body.set('url', imageUrl)
+  body.set('published', 'false')
+  if (opts.caption) body.set('caption', opts.caption)
+  if (typeof opts.scheduledPublishTime === 'number') {
+    body.set('scheduled_publish_time', String(opts.scheduledPublishTime))
+  }
+  return fetchJson<{ id: string; post_id?: string }>(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
+    { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }
+  )
+}
+
+export async function createFeedWithAttachedMedia(
+  pageId: string,
+  mediaFbids: string[],
+  opts: { message?: string; pageAccessToken?: string; userAccessToken?: string; scheduledPublishTime?: number }
+): Promise<{ id: string }> {
+  const { graphVersion } = readEnv()
+  const accessToken = await ensurePageToken(pageId, opts.pageAccessToken, opts.userAccessToken)
+
+  const body = new URLSearchParams()
+  body.set('access_token', accessToken)
+  if (opts.message) body.set('message', opts.message)
+  mediaFbids.forEach((fbid, i) => {
+    body.set(`attached_media[${i}]`, JSON.stringify({ media_fbid: fbid }))
+  })
+  if (typeof opts.scheduledPublishTime === 'number') {
+    body.set('published', 'false')
+    body.set('scheduled_publish_time', String(opts.scheduledPublishTime))
+  }
+
+  return fetchJson<{ id: string }>(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/feed`,
+    { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }
+  )
+}
+
+export async function postVideoToFacebookPage(
+  pageId: string,
+  videoUrl: string,
+  opts: { title?: string; description?: string; pageAccessToken?: string; userAccessToken?: string; scheduledPublishTime?: number }
+): Promise<{ id: string }> {
+  const { graphVersion } = readEnv()
+  const accessToken = await ensurePageToken(pageId, opts.pageAccessToken, opts.userAccessToken)
+  const body = new URLSearchParams()
+  body.set('access_token', accessToken)
+  body.set('file_url', videoUrl)
+  if (opts.description) body.set('description', opts.description)
+  if (opts.title) body.set('title', opts.title)
+  if (typeof opts.scheduledPublishTime === 'number') {
+    body.set('published', 'false')
+    body.set('scheduled_publish_time', String(opts.scheduledPublishTime))
+  }
+  return fetchJson<{ id: string }>(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/videos`,
+    { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }
+  )
+}
+
+function parseDataUrl(input: string): { mime: string; buffer: Buffer } | null {
+  try {
+    const m = /^data:(.*?);base64,(.*)$/i.exec(input)
+    if (m && m[2]) {
+      const mime = m[1] || 'image/jpeg'
+      const base64 = m[2]
+      return { mime, buffer: Buffer.from(base64, 'base64') }
+    }
+    // If it's raw base64 without data URI prefix, attempt as jpeg
+    if (/^[A-Za-z0-9+/=]+$/.test(input)) {
+      return { mime: 'image/jpeg', buffer: Buffer.from(input, 'base64') }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function uploadUnpublishedPhotoBinary(
+  pageId: string,
+  dataUriOrBase64: string,
+  opts: { pageAccessToken?: string; userAccessToken?: string; caption?: string; scheduledPublishTime?: number }
+): Promise<{ id: string; post_id?: string }> {
+  const { graphVersion } = readEnv()
+  const parsed = parseDataUrl(dataUriOrBase64)
+  if (!parsed) throw new Error('Invalid base64 image data')
+  const accessToken = await ensurePageToken(pageId, opts.pageAccessToken, opts.userAccessToken)
+  const form = new FormData()
+  form.append('access_token', accessToken)
+  form.append('published', 'false')
+  if (opts.caption) form.append('caption', opts.caption)
+  if (typeof opts.scheduledPublishTime === 'number') {
+    form.append('scheduled_publish_time', String(opts.scheduledPublishTime))
+  }
+  const ext = parsed.mime.includes('png') ? 'png' : parsed.mime.includes('gif') ? 'gif' : 'jpg'
+  const blob = new Blob([parsed.buffer], { type: parsed.mime })
+  form.append('source', blob, `photo.${ext}`)
+  return fetchJson<{ id: string; post_id?: string }>(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
+    { method: 'POST', body: form as any }
+  )
+}
+
+export async function uploadPhotoBinaryPublished(
+  pageId: string,
+  dataUriOrBase64: string,
+  opts: { pageAccessToken?: string; userAccessToken?: string; caption?: string }
+): Promise<{ id: string; post_id?: string }> {
+  const { graphVersion } = readEnv()
+  const parsed = parseDataUrl(dataUriOrBase64)
+  if (!parsed) throw new Error('Invalid base64 image data')
+  const accessToken = await ensurePageToken(pageId, opts.pageAccessToken, opts.userAccessToken)
+  const form = new FormData()
+  form.append('access_token', accessToken)
+  form.append('published', 'true')
+  if (opts.caption) form.append('caption', opts.caption)
+  const ext = parsed.mime.includes('png') ? 'png' : parsed.mime.includes('gif') ? 'gif' : 'jpg'
+  const blob = new Blob([parsed.buffer], { type: parsed.mime })
+  form.append('source', blob, `photo.${ext}`)
+  return fetchJson<{ id: string; post_id?: string }>(
+    `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
+    { method: 'POST', body: form as any }
+  )
+}
