@@ -248,7 +248,15 @@ export default function IntegrationsPage() {
           response = await fetch('/api/social/youtube/connect', { method: 'POST' })
           break
         case 'facebook':
-          response = await fetch('/api/social/facebook/connect', { method: 'POST' })
+          if (!session?.user?.id) {
+            setMessage({ type: 'error', text: getErrorMessage('unauthorized') })
+            return
+          }
+          response = await fetch('/api/social/facebook/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: session.user.id })
+          })
           break
         default:
           console.error('Unsupported platform:', platform)

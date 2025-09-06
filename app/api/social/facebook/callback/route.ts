@@ -22,23 +22,13 @@ export async function GET(req: Request) {
   const fbError = url.searchParams.get('error')
   const fbErrorDesc = url.searchParams.get('error_description')
   if (fbError) {
-    const redirectUrl = new URL(
-      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
-        fbErrorDesc || fbError
-      )}`,
-      origin
-    )
+    const redirectUrl = new URL(`/integrations?error=facebook_oauth_failed`, origin)
     return NextResponse.redirect(redirectUrl)
   }
 
   const code = url.searchParams.get('code')
   if (!code) {
-    const redirectUrl = new URL(
-      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
-        'Missing code'
-      )}`,
-      origin
-    )
+    const redirectUrl = new URL(`/integrations?error=missing_code`, origin)
     return NextResponse.redirect(redirectUrl)
   }
 
@@ -142,34 +132,15 @@ export async function GET(req: Request) {
         },
       })
 
-      const redirectUrl = new URL(
-        `/integrations?platform=${platform}&status=success`,
-        origin
-      )
+      const redirectUrl = new URL(`/integrations?success=facebook_connected`, origin)
       return NextResponse.redirect(redirectUrl)
     }
 
     // Missing context to persist
-    const reason = !appUserId
-      ? 'Missing app userId (include state with userId)'
-      : !fbProfileId
-      ? 'Missing Facebook profile id'
-      : 'Missing token'
-    const redirectUrl = new URL(
-      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
-        reason
-      )}`,
-      origin
-    )
+    const redirectUrl = new URL(`/integrations?error=facebook_oauth_failed`, origin)
     return NextResponse.redirect(redirectUrl)
   } catch (err: any) {
-    const message = err?.message || 'Token exchange failed'
-    const redirectUrl = new URL(
-      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
-        message
-      )}`,
-      origin
-    )
+    const redirectUrl = new URL(`/integrations?error=facebook_oauth_failed`, origin)
     return NextResponse.redirect(redirectUrl)
   }
 }
