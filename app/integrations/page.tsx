@@ -120,6 +120,12 @@ export default function IntegrationsPage() {
   const [platformFilter, setPlatformFilter] = useState<Platform | "All">("All")
   const [connectModalOpen, setConnectModalOpen] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null)
+  // Facebook Pages selection state
+  const [fbPages, setFbPages] = useState<Array<{ id: string; name: string }>>([])
+  const [fbPageModalOpen, setFbPageModalOpen] = useState(false)
+  const [fbSelectedPageId, setFbSelectedPageId] = useState<string | null>(null)
+  const [fbPageLoading, setFbPageLoading] = useState(false)
+  const [fbPageError, setFbPageError] = useState<string | null>(null)
 
   // Helper functions for success/error messages
   const getSuccessMessage = (success: string) => {
@@ -182,6 +188,11 @@ export default function IntegrationsPage() {
                     pageName: pages[0].name,
                   }),
                 })
+              } else if (pages.length > 1) {
+                // Open selection modal for multiple pages
+                setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
+                setFbSelectedPageId(pages[0].id)
+                setFbPageModalOpen(true)
               }
             }
           } catch (e) {
@@ -234,6 +245,63 @@ export default function IntegrationsPage() {
       console.error('Failed to fetch social accounts:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOpenFacebookPageSelector = async () => {
+    if (!session?.user?.id) {
+      setMessage({ type: 'error', text: getErrorMessage('unauthorized') })
+      return
+    }
+    setFbPageError(null)
+    setFbPageLoading(true)
+    try {
+      const res = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
+      const json = await res.json()
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || 'Failed to load Facebook pages')
+      }
+      const pages = (json.data?.pages || []).map((p: any) => ({ id: p.id, name: p.name }))
+      if (pages.length === 0) {
+        setMessage({ type: 'error', text: 'No Facebook Pages available for this account.' })
+        return
+      }
+      setFbPages(pages)
+      setFbSelectedPageId(pages[0].id)
+      setFbPageModalOpen(true)
+    } catch (e: any) {
+      setMessage({ type: 'error', text: e?.message || 'Failed to load Facebook pages' })
+    } finally {
+      setFbPageLoading(false)
+    }
+  }
+
+  const handleConfirmFacebookPage = async () => {
+    if (!session?.user?.id || !fbSelectedPageId) return
+    setFbPageLoading(true)
+    setFbPageError(null)
+    try {
+      const selected = fbPages.find((p) => p.id === fbSelectedPageId)
+      const res = await fetch('/api/social/facebook/select-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: session.user.id,
+          pageId: fbSelectedPageId,
+          pageName: selected?.name,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error?.message || 'Failed to save selected Page')
+      }
+      setFbPageModalOpen(false)
+      setMessage({ type: 'success', text: 'Facebook Page selected successfully!' })
+      fetchSocialAccounts()
+    } catch (e: any) {
+      setFbPageError(e?.message || 'Failed to save selected Page')
+    } finally {
+      setFbPageLoading(false)
     }
   }
 
@@ -550,6 +618,26 @@ export default function IntegrationsPage() {
                       />
                     ))}
                   </div>
+                  {/* Facebook Page selector quick action if needed */}
+                  {(() => {
+                    const fbAccounts = accounts.filter((a) => a.platform === 'FACEBOOK')
+                    const hasPage = fbAccounts.some((a) => a.accountType === 'business')
+                    const hasUserOnly = fbAccounts.length > 0 && !hasPage
+                    if (hasUserOnly) {
+                      return (
+                        <div className="mt-4">
+                          <Button
+                            variant="outline"
+                            onClick={handleOpenFacebookPageSelector}
+                            className="rounded-xl text-xs sm:text-sm"
+                          >
+                            Select Facebook Page
+                          </Button>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
                 </CardContent>
               </Card>
             </section>
@@ -592,6 +680,44 @@ export default function IntegrationsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setConnectModalOpen(false)} className="rounded-xl text-sm sm:text-base">
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Facebook Page Selection Modal */}
+      <Dialog open={fbPageModalOpen} onOpenChange={setFbPageModalOpen}>
+        <DialogContent className="sm:max-w-[520px] rounded-3xl border border-black/10 dark:border-white/10 bg-white/80 dark:bg-neutral-950/70 backdrop-blur-2xl mx-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              Select a Facebook Page
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Choose which Page to connect for publishing. You can change this later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-60 overflow-auto">
+            {fbPages.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 p-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="fbPage"
+                  checked={fbSelectedPageId === p.id}
+                  onChange={() => setFbSelectedPageId(p.id)}
+                />
+                <span className="text-sm">{p.name}</span>
+              </label>
+            ))}
+            {fbPageError && (
+              <div className="text-xs text-red-600">{fbPageError}</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFbPageModalOpen(false)} className="rounded-xl text-sm sm:text-base">
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmFacebookPage} disabled={fbPageLoading || !fbSelectedPageId} className="rounded-xl text-sm sm:text-base">
+              {fbPageLoading ? 'Saving…' : 'Confirm'}
             </Button>
           </DialogFooter>
         </DialogContent>
