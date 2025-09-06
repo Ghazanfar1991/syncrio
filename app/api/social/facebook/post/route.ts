@@ -7,8 +7,8 @@ import { postToFacebookPage, getPageAccessToken } from '@/lib/social/facebook'
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions as any)
-    if (!session?.user?.id) {
+    const sessionAny = (await getServerSession(authOptions as any)) as any
+    if (!sessionAny?.user?.id) {
       return NextResponse.json(
         { success: false, error: { message: 'Unauthorized' } },
         { status: 401 }
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       userAccessToken: inputUserAccessToken,
     } = body || {}
 
-    const userId = session.user.id as string
+    const userId = sessionAny.user.id as string
 
     let pageId: string | undefined = inputPageId
     let pageAccessToken: string | undefined = inputPageAccessToken

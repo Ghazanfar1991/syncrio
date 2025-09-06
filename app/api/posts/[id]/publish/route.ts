@@ -262,9 +262,11 @@ export async function POST(
                     }
 
                     try {
-                      const pages = await getUserPages(userAccessToken)
-                      if (pages.length === 1) {
-                        pageId = pages[0].id
+                      if (userAccessToken) {
+                        const pages = await getUserPages(userAccessToken)
+                        if (pages.length === 1) {
+                          pageId = pages[0].id
+                        }
                       }
                     } catch (e) {
                       console.warn('⚠️ Failed to list Facebook pages for auto-pick:', e)
