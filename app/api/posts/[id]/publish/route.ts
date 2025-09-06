@@ -7,6 +7,8 @@ import { postToLinkedIn, postToLinkedInWithVideo } from '@/lib/social/linkedin'
 import { createInstagramMedia, createInstagramVideo, createInstagramImage, getMediaType, getInstagramAspectRatioGuidance } from '@/lib/social/instagram'
 import { uploadYouTubeVideo } from '@/lib/social/youtube'
 import { TokenManager } from '@/lib/social/token-manager'
+import { AccountType } from '@prisma/client'
+import { postToFacebookPage, getUserPages } from '@/lib/social/facebook'
 
 // Minimal local types to improve type safety without changing behavior
 type PostPublicationLite = { id: string; status: string; socialAccountId: string }
@@ -211,6 +213,90 @@ export async function POST(
             let platformPostId = null
 
             switch (account.platform) {
+              case 'FACEBOOK': {
+                console.log('🚀 PUBLISH ENDPOINT: Posting to Facebook...')
+                if (!tokenValidation.accessToken) {
+                  throw new Error('No valid Facebook token available')
+                }
+
+                // Resolve target Page and tokens
+                let pageId: string | undefined
+                let pageAccessToken: string | undefined
+                let userAccessToken: string | undefined
+
+                const selectedPageId = (account as any)?.metadata?.selectedPageId
+                const isBusiness = account.accountType === AccountType.BUSINESS || account.accountType === 'BUSINESS'
+
+                if (isBusiness) {
+                  // Page-level connection: accountId is the Page id and accessToken is the Page token
+                  pageId = account.accountId
+                  pageAccessToken = tokenValidation.accessToken
+                } else {
+                  // User-level connection: need a Page id. Prefer selectedPageId, else auto-pick if exactly one.
+                  userAccessToken = tokenValidation.accessToken
+
+                  if (selectedPageId) {
+                    pageId = selectedPageId
+                  } else {
+                    // Try to find a connected Page account for this user and use it if exactly one exists
+                    try {
+                      const pageAccounts = await db.socialAccount.findMany({
+                        where: {
+                          userId: user.id,
+                          platform: 'FACEBOOK' as any,
+                          accountType: AccountType.BUSINESS,
+                          isActive: true,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                      })
+                      if (pageAccounts.length === 1) {
+                        pageId = pageAccounts[0].accountId
+                        pageAccessToken = pageAccounts[0].accessToken
+                        userAccessToken = undefined
+                        console.log('🚀 PUBLISH ENDPOINT: Using connected Page account:', pageAccounts[0].accountName)
+                      } else if (pageAccounts.length > 1) {
+                        throw new Error('Multiple Facebook Pages connected. Select one in Integrations or assign this post to a specific Page.')
+                      }
+                    } catch (e) {
+                      console.warn('⚠️ Failed to resolve connected Page account fallback:', e)
+                    }
+
+                    try {
+                      const pages = await getUserPages(userAccessToken)
+                      if (pages.length === 1) {
+                        pageId = pages[0].id
+                      }
+                    } catch (e) {
+                      console.warn('⚠️ Failed to list Facebook pages for auto-pick:', e)
+                    }
+                  }
+
+                  if (!pageId) {
+                    throw new Error('No Facebook Page selected. Connect a Page or select one in Integrations.')
+                  }
+                }
+
+                // Prepare media
+                const fbImage = combinePostImages(post)
+                const imageUrl = Array.isArray(fbImage) ? fbImage[0] : fbImage
+
+                // Optional scheduling: if you have a scheduledAt field, convert to unix seconds
+                const scheduledPublishTime = undefined as number | undefined
+
+                const fbRes = await postToFacebookPage({
+                  pageId: pageId!,
+                  message: contentWithHashtags,
+                  linkUrl: undefined,
+                  imageUrl: imageUrl,
+                  scheduledPublishTime,
+                  pageAccessToken,
+                  userAccessToken,
+                })
+
+                platformPostId = fbRes.id
+                console.log(`✅ PUBLISH ENDPOINT: Facebook post successful! ID: ${platformPostId}`)
+                break
+              }
               case 'TWITTER':
                 console.log(`🚀 PUBLISH ENDPOINT: ===== TWITTER POSTING START =====`)
                 console.log(`🚀 PUBLISH ENDPOINT: Posting to Twitter...`)

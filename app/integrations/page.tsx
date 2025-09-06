@@ -164,6 +164,31 @@ export default function IntegrationsPage() {
     
     if (success) {
       setMessage({ type: 'success', text: getSuccessMessage(success) })
+      // Auto-select a Facebook Page if exactly one exists
+      if (success === 'facebook_connected' && session?.user?.id) {
+        ;(async () => {
+          try {
+            const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
+            const pagesJson = await pagesRes.json()
+            if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
+              const pages = pagesJson.data.pages
+              if (pages.length === 1) {
+                await fetch('/api/social/facebook/select-page', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    userId: session.user.id,
+                    pageId: pages[0].id,
+                    pageName: pages[0].name,
+                  }),
+                })
+              }
+            }
+          } catch (e) {
+            console.warn('Auto-select Facebook page skipped:', e)
+          }
+        })()
+      }
       // Clear URL parameter
       window.history.replaceState({}, document.title, window.location.pathname)
       // Refresh accounts list after successful connection
