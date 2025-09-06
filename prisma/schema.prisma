@@ -284,6 +284,10 @@ enum SocialPlatform {
   LINKEDIN
   INSTAGRAM
   YOUTUBE
+  FACEBOOK
+  TIKTOK
+  TELEGRAM
+  THREADS
 }
 
 enum ApprovalStatus {
