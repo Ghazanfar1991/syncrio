@@ -126,6 +126,7 @@ export default function IntegrationsPage() {
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string | null>(null)
   const [fbPageLoading, setFbPageLoading] = useState(false)
   const [fbPageError, setFbPageError] = useState<string | null>(null)
+  const [fbPendingConnect, setFbPendingConnect] = useState(false)
 
   // Helper functions for success/error messages
   const getSuccessMessage = (success: string) => {
@@ -170,40 +171,48 @@ export default function IntegrationsPage() {
     
     if (success) {
       setMessage({ type: 'success', text: getSuccessMessage(success) })
-      // Auto-select a Facebook Page if exactly one exists
-      if (success === 'facebook_connected' && session?.user?.id) {
-        ;(async () => {
-          try {
-            const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
-            const pagesJson = await pagesRes.json()
-            if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
-              const pages = pagesJson.data.pages
-              if (pages.length === 1) {
-                await fetch('/api/social/facebook/select-page', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    userId: session.user.id,
-                    pageId: pages[0].id,
-                    pageName: pages[0].name,
-                  }),
-                })
-              } else if (pages.length > 1) {
-                // Open selection modal for multiple pages
-                setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
-                setFbSelectedPageId(pages[0].id)
-                setFbPageModalOpen(true)
+      if (success === 'facebook_connected') {
+        if (session?.user?.id) {
+          ;(async () => {
+            try {
+              const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
+              const pagesJson = await pagesRes.json()
+              if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
+                const pages = pagesJson.data.pages
+                if (pages.length === 1) {
+                  await fetch('/api/social/facebook/select-page', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      userId: session.user.id,
+                      pageId: pages[0].id,
+                      pageName: pages[0].name,
+                    }),
+                  })
+                } else if (pages.length > 1) {
+                  setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
+                  setFbSelectedPageId(pages[0].id)
+                  setFbPageModalOpen(true)
+                }
               }
+            } catch (e) {
+              console.warn('Auto-select Facebook page skipped:', e)
+            } finally {
+              // Clear URL and refresh accounts after handling
+              window.history.replaceState({}, document.title, window.location.pathname)
+              fetchSocialAccounts()
             }
-          } catch (e) {
-            console.warn('Auto-select Facebook page skipped:', e)
-          }
-        })()
+          })()
+        } else {
+          // Session not ready yet; mark pending and process when session loads
+          try { sessionStorage.setItem('fbPendingConnect', '1') } catch {}
+          setFbPendingConnect(true)
+        }
+      } else {
+        // Clear URL parameter for other success cases
+        window.history.replaceState({}, document.title, window.location.pathname)
+        fetchSocialAccounts()
       }
-      // Clear URL parameter
-      window.history.replaceState({}, document.title, window.location.pathname)
-      // Refresh accounts list after successful connection
-      fetchSocialAccounts()
     } else if (error) {
       let text = getErrorMessage(error)
       if (errorDetail) {
@@ -216,7 +225,46 @@ export default function IntegrationsPage() {
       // Clear URL parameter
       window.history.replaceState({}, document.title, window.location.pathname)
     }
-  }, [])
+  }, [session?.user?.id])
+
+  // Handle pending Facebook connect once session is available
+  useEffect(() => {
+    const pending = (() => {
+      try { return sessionStorage.getItem('fbPendingConnect') === '1' } catch { return fbPendingConnect }
+    })()
+    if (!pending || !session?.user?.id) return
+    ;(async () => {
+      try {
+        const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
+        const pagesJson = await pagesRes.json()
+        if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
+          const pages = pagesJson.data.pages
+          if (pages.length === 1) {
+            await fetch('/api/social/facebook/select-page', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: session.user.id,
+                pageId: pages[0].id,
+                pageName: pages[0].name,
+              }),
+            })
+          } else if (pages.length > 1) {
+            setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
+            setFbSelectedPageId(pages[0].id)
+            setFbPageModalOpen(true)
+          }
+        }
+      } catch (e) {
+        console.warn('Pending Facebook page selection skipped:', e)
+      } finally {
+        try { sessionStorage.removeItem('fbPendingConnect') } catch {}
+        setFbPendingConnect(false)
+        window.history.replaceState({}, document.title, window.location.pathname)
+        fetchSocialAccounts()
+      }
+    })()
+  }, [fbPendingConnect, session?.user?.id])
 
   const fetchSocialAccounts = async () => {
     try {
