@@ -94,9 +94,11 @@ export async function GET(req: Request) {
 
     // Fetch Facebook user profile id for accountId
     let fbProfileId = ''
+    let fbProfileName = ''
     try {
       const profile = await getUserProfile(userToken || '')
       fbProfileId = profile?.id || ''
+      fbProfileName = (profile as any)?.name || ''
     } catch {}
 
     // Persist if we can resolve both app user and fb account id
@@ -120,13 +122,18 @@ export async function GET(req: Request) {
           userId: appUserId,
           platform: 'FACEBOOK',
           accountId: fbProfileId,
+          accountName: fbProfileName || `Facebook User ${fbProfileId}`,
+          displayName: fbProfileName || undefined,
           accessToken: userToken,
           // Use access token as refresh seed so TokenManager can re-extend
           refreshToken: userToken,
           expiresAt,
           isActive: true,
+          isConnected: true,
         },
         update: {
+          accountName: fbProfileName || undefined,
+          displayName: fbProfileName || undefined,
           accessToken: userToken,
           refreshToken: userToken,
           expiresAt,
