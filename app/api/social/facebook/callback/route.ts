@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { headers as nextHeaders, cookies as nextCookies } from 'next/headers'
 import {
   exchangeCodeForToken,
   getUserProfile,
@@ -70,18 +69,24 @@ export async function GET(req: Request) {
           if (uid && typeof uid === 'string') return uid
         }
       }
-      // 2) Try header
-      try {
-        const h = nextHeaders()
-        const headerUid = h.get('x-user-id') || h.get('x-user') || h.get('x-userid')
-        if (headerUid) return headerUid
-      } catch {}
-      // 3) Try cookie
-      try {
-        const c = nextCookies()
-        const cookieUid = c.get('userId')?.value || c.get('uid')?.value
+      // 2) Try request headers
+      const headerUid =
+        req.headers.get('x-user-id') ||
+        req.headers.get('x-user') ||
+        req.headers.get('x-userid')
+      if (headerUid) return headerUid
+      // 3) Try cookies header
+      const cookiesHeader = req.headers.get('cookie') || ''
+      if (cookiesHeader) {
+        const parts = cookiesHeader.split(/;\s*/)
+        const kv: Record<string, string> = {}
+        for (const p of parts) {
+          const idx = p.indexOf('=')
+          if (idx > -1) kv[p.slice(0, idx).trim()] = decodeURIComponent(p.slice(idx + 1))
+        }
+        const cookieUid = kv['userId'] || kv['uid']
         if (cookieUid) return cookieUid
-      } catch {}
+      }
       return null
     }
 
