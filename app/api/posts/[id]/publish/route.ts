@@ -87,6 +87,29 @@ function combinePostVideos(post: any): string | string[] | undefined {
   }
 }
 
+// Ensure an absolute http(s) URL for external services (e.g., Facebook Graph API)
+function resolveHttpUrl(maybeUrl?: string): string | undefined {
+  if (!maybeUrl) return undefined
+  try {
+    const u = new URL(maybeUrl)
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString()
+    return undefined
+  } catch {
+    // Not a fully qualified URL; try to resolve relative path with app base URL
+    if (maybeUrl.startsWith('/')) {
+      const base = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL
+      if (base) {
+        try {
+          return new URL(maybeUrl, base).toString()
+        } catch {
+          return undefined
+        }
+      }
+    }
+    return undefined
+  }
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -280,7 +303,11 @@ export async function POST(
 
                 // Prepare media
                 const fbImage = combinePostImages(post)
-                const imageUrl = Array.isArray(fbImage) ? fbImage[0] : fbImage
+                const rawImageUrl = Array.isArray(fbImage) ? fbImage[0] : fbImage
+                const imageUrl = resolveHttpUrl(typeof rawImageUrl === 'string' ? rawImageUrl : undefined)
+                if (rawImageUrl && !imageUrl) {
+                  console.warn('⚠️ PUBLISH ENDPOINT: Facebook image URL is not a public http(s) URL; posting without image:', rawImageUrl)
+                }
 
                 // Optional scheduling: if you have a scheduledAt field, convert to unix seconds
                 const scheduledPublishTime = undefined as number | undefined
@@ -289,7 +316,7 @@ export async function POST(
                   pageId: pageId!,
                   message: contentWithHashtags,
                   linkUrl: undefined,
-                  imageUrl: imageUrl,
+                  imageUrl,
                   scheduledPublishTime,
                   pageAccessToken,
                   userAccessToken,
