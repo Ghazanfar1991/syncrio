@@ -401,7 +401,12 @@ export async function uploadUnpublishedPhotoBinary(
     form.append('scheduled_publish_time', String(opts.scheduledPublishTime))
   }
   const ext = parsed.mime.includes('png') ? 'png' : parsed.mime.includes('gif') ? 'gif' : 'jpg'
-  const blob = new Blob([parsed.buffer], { type: parsed.mime })
+  const view = new Uint8Array(
+    parsed.buffer.buffer as ArrayBuffer,
+    parsed.buffer.byteOffset,
+    parsed.buffer.byteLength
+  )
+  const blob = new Blob([view], { type: parsed.mime })
   form.append('source', blob, `photo.${ext}`)
   return fetchJson<{ id: string; post_id?: string }>(
     `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
@@ -423,7 +428,12 @@ export async function uploadPhotoBinaryPublished(
   form.append('published', 'true')
   if (opts.caption) form.append('caption', opts.caption)
   const ext = parsed.mime.includes('png') ? 'png' : parsed.mime.includes('gif') ? 'gif' : 'jpg'
-  const blob = new Blob([parsed.buffer], { type: parsed.mime })
+  const view = new Uint8Array(
+    parsed.buffer.buffer as ArrayBuffer,
+    parsed.buffer.byteOffset,
+    parsed.buffer.byteLength
+  )
+  const blob = new Blob([view], { type: parsed.mime })
   form.append('source', blob, `photo.${ext}`)
   return fetchJson<{ id: string; post_id?: string }>(
     `https://graph.facebook.com/${graphVersion}/${pageId}/photos`,
