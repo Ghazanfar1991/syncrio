@@ -145,3 +145,82 @@ export async function GET(req: NextRequest) {
     )
   }
 }
+import { NextResponse } from 'next/server'
+import {
+  exchangeCodeForToken,
+  getUserProfile,
+  getUserPages,
+} from '@/lib/social/facebook'
+
+function baseUrlFromRequest(req: Request) {
+  try {
+    const url = new URL(req.url)
+    return `${url.protocol}//${url.host}`
+  } catch {
+    return process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || ''
+  }
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const origin = baseUrlFromRequest(req)
+  const platform = 'facebook'
+
+  const error = url.searchParams.get('error')
+  const errorDescription = url.searchParams.get('error_description')
+  if (error) {
+    const redirectUrl = new URL(`/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
+      errorDescription || error
+    )}`, origin)
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  const code = url.searchParams.get('code')
+  if (!code) {
+    const redirectUrl = new URL(
+      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
+        'Missing code'
+      )}`,
+      origin
+    )
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  try {
+    const tokenSet = await exchangeCodeForToken(code)
+
+    // Optional: fetch basic info to confirm access
+    const userToken =
+      tokenSet.longLivedAccessToken || tokenSet.accessToken || ''
+    let profileId = ''
+    try {
+      const profile = await getUserProfile(userToken)
+      profileId = profile?.id || ''
+    } catch {
+      // ignore profile fetch errors; still consider connection successful
+    }
+
+    // Optionally load pages; clients can fetch later via their own API
+    // const pages = await getUserPages(userToken)
+
+    // TODO: Persist tokenSet using your token manager if desired.
+    // We only redirect with success for now; storage can be wired next.
+
+    const redirectUrl = new URL(
+      `/integrations?platform=${platform}&status=success${
+        profileId ? `&profileId=${encodeURIComponent(profileId)}` : ''
+      }`,
+      origin
+    )
+    return NextResponse.redirect(redirectUrl)
+  } catch (err: any) {
+    const message = err?.message || 'Token exchange failed'
+    const redirectUrl = new URL(
+      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
+        message
+      )}`,
+      origin
+    )
+    return NextResponse.redirect(redirectUrl)
+  }
+}
