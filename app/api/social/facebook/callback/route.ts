@@ -141,10 +141,24 @@ export async function GET(req: Request) {
           updatedAt: new Date(),
         },
       })
+
+      const redirectUrl = new URL(
+        `/integrations?platform=${platform}&status=success`,
+        origin
+      )
+      return NextResponse.redirect(redirectUrl)
     }
 
+    // Missing context to persist
+    const reason = !appUserId
+      ? 'Missing app userId (include state with userId)'
+      : !fbProfileId
+      ? 'Missing Facebook profile id'
+      : 'Missing token'
     const redirectUrl = new URL(
-      `/integrations?platform=${platform}&status=success`,
+      `/integrations?platform=${platform}&status=error&reason=${encodeURIComponent(
+        reason
+      )}`,
       origin
     )
     return NextResponse.redirect(redirectUrl)
