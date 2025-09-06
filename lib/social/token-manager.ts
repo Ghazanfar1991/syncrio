@@ -2,6 +2,7 @@
 import { db } from '@/lib/db'
 import { refreshTwitterToken } from './twitter-oauth-config'
 import { refreshLinkedInToken } from './linkedin'
+import { refreshFacebookToken } from './facebook'
 import { refreshInstagramToken } from './instagram'
 
 export interface TokenValidationResult {
@@ -139,6 +140,9 @@ export class TokenManager {
       
       case 'INSTAGRAM':
         return await refreshInstagramToken(refreshToken)
+      
+      case 'FACEBOOK':
+        return await refreshFacebookToken(refreshToken)
       
       default:
         throw new Error(`Unsupported platform: ${platform}`)

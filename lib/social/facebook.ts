@@ -273,3 +273,13 @@ export const Facebook = {
   postToFacebookPage,
 }
 
+// For TokenManager compatibility: attempt to re-extend a long-lived token
+export async function refreshFacebookToken(
+  token: string
+): Promise<{ access_token: string; refresh_token?: string; expires_in?: number }> {
+  const res = await getLongLivedUserToken(token)
+  return {
+    access_token: res.access_token,
+    expires_in: res.expires_in,
+  }
+}
