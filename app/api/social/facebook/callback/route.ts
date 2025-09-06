@@ -6,6 +6,7 @@ import {
   getUserProfile,
 } from '@/lib/social/facebook'
 import { db } from '@/lib/db'
+import { SocialPlatform } from '@prisma/client'
 
 function originFromRequest(req: Request): string {
   try {
@@ -146,13 +147,13 @@ export async function GET(req: Request) {
         where: {
           userId_platform_accountId: {
             userId: appUserId,
-            platform: 'FACEBOOK',
+            platform: SocialPlatform.FACEBOOK,
             accountId: fbProfileId,
           },
         },
         create: {
           userId: appUserId,
-          platform: 'FACEBOOK',
+          platform: SocialPlatform.FACEBOOK,
           accountId: fbProfileId,
           accountName: fbProfileName || `Facebook User ${fbProfileId}`,
           displayName: fbProfileName || undefined,

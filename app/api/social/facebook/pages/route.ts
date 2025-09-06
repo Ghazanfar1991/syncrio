@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { SocialPlatform } from '@prisma/client'
 import { getUserPages } from '@/lib/social/facebook'
 
 export async function GET(req: Request) {
@@ -14,7 +15,7 @@ export async function GET(req: Request) {
     }
 
     const account = await (db as any).socialAccount.findFirst({
-      where: { userId, platform: 'FACEBOOK', isActive: true },
+      where: { userId, platform: SocialPlatform.FACEBOOK, isActive: true },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -34,4 +35,3 @@ export async function GET(req: Request) {
     )
   }
 }
-

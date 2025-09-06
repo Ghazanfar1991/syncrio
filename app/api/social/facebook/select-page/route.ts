@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { SocialPlatform, AccountType } from '@prisma/client'
 import { getPageAccessToken } from '@/lib/social/facebook'
 
 export async function POST(req: Request) {
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
     }
 
     const userAccount = await (db as any).socialAccount.findFirst({
-      where: { userId, platform: 'FACEBOOK', isActive: true },
+      where: { userId, platform: SocialPlatform.FACEBOOK, isActive: true },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -41,13 +42,13 @@ export async function POST(req: Request) {
       where: {
         userId_platform_accountId: {
           userId,
-          platform: 'FACEBOOK',
+          platform: SocialPlatform.FACEBOOK,
           accountId: pageId,
         },
       },
       create: {
         userId,
-        platform: 'FACEBOOK',
+        platform: SocialPlatform.FACEBOOK,
         accountId: pageId,
         accountName: pageName || `Facebook Page ${pageId}`,
         displayName: pageName || undefined,
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
         refreshToken: userAccount.accessToken, // store user token as refresh seed
         isActive: true,
         isConnected: true,
-        accountType: 'BUSINESS',
+        accountType: AccountType.BUSINESS,
       },
       update: {
         accountName: pageName || undefined,
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
         refreshToken: userAccount.accessToken,
         isActive: true,
         isConnected: true,
-        accountType: 'BUSINESS',
+        accountType: AccountType.BUSINESS,
         updatedAt: new Date(),
       },
     })
@@ -77,4 +78,3 @@ export async function POST(req: Request) {
     )
   }
 }
-
