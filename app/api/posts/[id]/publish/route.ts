@@ -225,7 +225,7 @@ export async function POST(
                 let userAccessToken: string | undefined
 
                 const selectedPageId = (account as any)?.metadata?.selectedPageId
-                const isBusiness = account.accountType === AccountType.BUSINESS || account.accountType === 'BUSINESS'
+                const isBusiness = account.accountType === AccountType.BUSINESS
 
                 if (isBusiness) {
                   // Page-level connection: accountId is the Page id and accessToken is the Page token
