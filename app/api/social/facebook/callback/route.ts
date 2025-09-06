@@ -104,9 +104,9 @@ export async function GET(req: Request) {
     }
     if (!appUserId) {
       try {
-        const session = await getServerSession(authOptions as any)
-        if (session?.user?.id) {
-          appUserId = session.user.id as string
+        const sessionAny = (await getServerSession(authOptions as any)) as any
+        if (sessionAny?.user?.id) {
+          appUserId = sessionAny.user.id as string
           userIdSource = 'session'
         }
       } catch {}
@@ -186,4 +186,3 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL(`/integrations?error=facebook_oauth_failed`, origin))
   }
 }
-
