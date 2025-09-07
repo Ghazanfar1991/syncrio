@@ -1,757 +1,397 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import React from 'react';
+import React from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { useTheme } from '@/components/providers/theme-provider'
-import { AuroraLogoWithText } from '@/components/ui/aurora-logo'
+
+import { Sidebar } from '@/components/layout/sidebar'
+import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  Settings,
-  Plus,
-  Edit,
-  Trash2,
-  TestTube,
-  TrendingUp,
-  DollarSign,
-  Zap,
-  Shield,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Menu,
-  Search,
-  Bell,
-  Sun,
-  Moon,
-  Home,
-  Rocket,
-  FileText,
-  Calendar,
-  ArrowLeft,
-  Users,
-  Server,
-  Activity,
-  BarChart3
-} from 'lucide-react'
-import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { Zap, CheckCircle, Settings, Activity } from 'lucide-react'
 
-interface AIModel {
-  id: string
-  name: string
-  provider: 'openrouter' | 'openai' | 'anthropic'
-  model: string
-  purpose: 'content_generation' | 'hashtag_generation' | 'image_generation' | 'chat'
-  maxTokens: number
-  temperature: number
-  costPer1kTokens: number
-  isActive: boolean
-  isDefault: boolean
-  performance: {
-    accuracy: number
-    speed: number
-    reliability: number
-  }
-  createdAt: string
-  updatedAt: string
-}
-
-interface ModelFormData {
-  name: string
-  provider: string
-  model: string
-  purpose: string
-  maxTokens: number
-  temperature: number
-  costPer1kTokens: number
-  isActive: boolean
-  isDefault: boolean
-  performance: {
-    accuracy: number
-    speed: number
-    reliability: number
-  }
-}
-
-export default function AppOwnerAIModelsPage() {
+export default function AppOwnerModelsPage() {
   const { data: session, status } = useSession()
-  const { theme, toggleTheme } = useTheme()
-  const dark = theme === 'dark'
-  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
-  if (typeof window === "undefined") return false;
-  try {
-    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
-  } catch {
-    return false;
-  }
-});
 
-React.useEffect(() => {
-  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
-}, [collapsed]);
-  const [models, setModels] = useState<AIModel[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [editingModel, setEditingModel] = useState<AIModel | null>(null)
-  const [formData, setFormData] = useState<ModelFormData>({
-    name: '',
-    provider: 'openai',
-    model: '',
-    purpose: 'content_generation',
-    maxTokens: 1000,
-    temperature: 0.7,
-    costPer1kTokens: 0,
-    isActive: true,
-    isDefault: false,
-    performance: { accuracy: 80, speed: 80, reliability: 80 }
+  // Sidebar state synced with other pages
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return JSON.parse(localStorage.getItem('sidebar:collapsed') ?? 'false')
+    } catch {
+      return false
+    }
   })
 
-  useEffect(() => {
-    if (session) {
-      fetchModels()
+  const handleToggleCollapse = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (next) => {
+      setCollapsed((prev) => {
+        const value = typeof next === 'function' ? (next as (p: boolean) => boolean)(prev) : next
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('sidebar:collapsed', JSON.stringify(value))
+            window.dispatchEvent(new CustomEvent('sidebar:collapsed-change', { detail: value }))
+          }
+        } catch {}
+        return value
+      })
+    },
+    []
+  )
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onCustom = (e: Event) => {
+      const ce = e as CustomEvent<boolean>
+      if (typeof ce.detail === 'boolean') setCollapsed(ce.detail)
     }
-  }, [session])
-
-  if (status === 'loading') {
-    return <div>Loading...</div>
-  }
-
-  if (!session) {
-    redirect('/auth/signin')
-  }
-
-  // Check if user is app owner (hardcoded for simplicity)
-  const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
-
-  if (!isAppOwner) {
-    redirect('/dashboard')
-  }
-
-  const fetchModels = async () => {
-    try {
-      const response = await fetch('/api/app-owner/ai-models')
-      if (response.ok) {
-        const data = await response.json()
-        setModels(data.data.models)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'sidebar:collapsed' && e.newValue != null) {
+        try {
+          setCollapsed(JSON.parse(e.newValue))
+        } catch {}
       }
-    } catch (error) {
-      console.error('Failed to fetch models:', error)
+    }
+    window.addEventListener('sidebar:collapsed-change', onCustom as EventListener)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('sidebar:collapsed-change', onCustom as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
+
+  // Data state for dynamic model registry
+  const [isLoading, setIsLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [providers, setProviders] = React.useState<any[]>([])
+  const [models, setModels] = React.useState<any[]>([])
+  const [assignments, setAssignments] = React.useState<any[]>([])
+
+  const [showAddProvider, setShowAddProvider] = React.useState(false)
+  const [showAddModel, setShowAddModel] = React.useState(false)
+
+  const [providerForm, setProviderForm] = React.useState({
+    name: '',
+    type: 'OPENAI',
+    baseUrl: '',
+    apiKeyEnvVar: '',
+    isActive: true,
+  })
+
+  const [modelForm, setModelForm] = React.useState({
+    providerId: '',
+    name: '',
+    modelId: '',
+    modality: 'TEXT',
+    systemPrompt: '',
+    defaultOptions: '', // JSON as string
+    capabilities: '', // JSON as string
+    isActive: true,
+  })
+
+  const fetchRegistry = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/app-owner/models', { cache: 'no-store' })
+      if (!res.ok) throw new Error(`Failed to load models: ${res.status}`)
+      const data = await res.json()
+      setProviders(data.providers ?? [])
+      setModels(data.models ?? [])
+      setAssignments(data.assignments ?? [])
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to load')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    // Basic validation
-    if (!formData.name.trim() || !formData.model.trim()) {
-      alert('Please fill in all required fields')
-      return
-    }
-    
+  const addProvider = async () => {
     try {
-      const url = editingModel 
-        ? `/api/app-owner/ai-models/${editingModel.id}`
-        : '/api/app-owner/ai-models'
-      
-      const method = editingModel ? 'PUT' : 'POST'
-      
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+      setIsLoading(true)
+      const res = await fetch('/api/app-owner/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'provider', ...providerForm }),
       })
-
-      if (response.ok) {
-        await fetchModels()
-        resetForm()
-        setShowAddForm(false)
-        setEditingModel(null)
-        alert(editingModel ? 'Model updated successfully!' : 'Model added successfully!')
-      } else {
-        const errorData = await response.json()
-        alert(`Failed to save model: ${errorData.error || 'Unknown error'}`)
-      }
-    } catch (error) {
-      console.error('Failed to save model:', error)
-      alert('Failed to save model. Please try again.')
+      if (!res.ok) throw new Error(await res.text())
+      setProviderForm({ name: '', type: 'OPENAI', baseUrl: '', apiKeyEnvVar: '', isActive: true })
+      setShowAddProvider(false)
+      await fetchRegistry()
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to add provider')
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      provider: 'openai',
-      model: '',
-      purpose: 'content_generation',
-      maxTokens: 1000,
-      temperature: 0.7,
-      costPer1kTokens: 0,
-      isActive: true,
-      isDefault: false,
-      performance: { accuracy: 80, speed: 80, reliability: 80 }
-    })
-  }
-
-  const editModel = (model: AIModel) => {
-    setEditingModel(model)
-    setFormData({
-      name: model.name,
-      provider: model.provider,
-      model: model.model,
-      purpose: model.purpose,
-      maxTokens: model.maxTokens,
-      temperature: model.temperature,
-      costPer1kTokens: model.costPer1kTokens,
-      isActive: model.isActive,
-      isDefault: model.isDefault,
-      performance: model.performance
-    })
-    setShowAddForm(true)
-  }
-
-  const testModel = async (modelId: string) => {
+  const addModel = async () => {
     try {
-      const response = await fetch(`/api/app-owner/ai-models/${modelId}/test`, {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        alert('Model test successful!')
-      } else {
-        alert('Model test failed!')
+      setIsLoading(true)
+      const payload: any = { action: 'model', ...modelForm }
+      if (modelForm.defaultOptions) {
+        try { payload.defaultOptions = JSON.parse(modelForm.defaultOptions) } catch {}
       }
-    } catch (error) {
-      console.error('Model test failed:', error)
-      alert('Model test failed!')
+      if (modelForm.capabilities) {
+        try { payload.capabilities = JSON.parse(modelForm.capabilities) } catch {}
+      }
+      const res = await fetch('/api/app-owner/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setModelForm({ providerId: '', name: '', modelId: '', modality: 'TEXT', systemPrompt: '', defaultOptions: '', capabilities: '', isActive: true })
+      setShowAddModel(false)
+      await fetchRegistry()
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to add model')
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const getProviderIcon = (provider: string) => {
-    switch (provider) {
-      case 'openai': return '🤖'
-      case 'anthropic': return '🧠'
-      case 'openrouter': return '🔗'
-      default: return '📱'
+  const assignPrimary = async (feature: string, modelId: string) => {
+    try {
+      setIsLoading(true)
+      const res = await fetch('/api/app-owner/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'assign', feature, modelId, priority: 0 }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      await fetchRegistry()
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to assign model')
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const getPurposeColor = (purpose: string) => {
-    switch (purpose) {
-      case 'content_generation': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-      case 'hashtag_generation': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-      case 'image_generation': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-      case 'chat': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+  React.useEffect(() => {
+    // Only fetch when authenticated and authorized
+    const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
+    if (status === 'authenticated' && isAppOwner) {
+      fetchRegistry()
     }
-  }
+  }, [status, session?.user?.email])
 
-  const getPerformanceColor = (score: number) => {
-    if (score >= 90) return 'text-green-600 dark:text-green-400'
-    if (score >= 80) return 'text-yellow-600 dark:text-yellow-400'
-    return 'text-red-600 dark:text-red-400'
-  }
+  // After declaring all hooks, handle gating to keep hook order stable
+  const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
+  if (status === 'loading') return <div>Loading...</div>
+  if (!session) redirect('/auth/signin')
+  if (!isAppOwner) redirect('/dashboard')
+
+  const activeModels = models.filter((m) => m.isActive).length
+  const totalModels = models.length
+  const uptime = 98.5
 
   return (
     <div className="min-h-screen font-sans bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
-      {/* Topbar */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-white/40 dark:bg-black/40 border-b border-black/5 dark:border-white/5">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center gap-4">
-          <button onClick={() => setCollapsed(s => !s)} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/6 transition">
-            <Menu className="w-5 h-5" />
-          </button>
-          <AuroraLogoWithText size="md" showBadge={true} />
+      <Sidebar collapsed={collapsed} onToggleCollapse={handleToggleCollapse} showPlanInfo={true} />
 
-          <div className="ml-6 flex-1 max-w-2xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 w-4 h-4" />
-              <input className="w-full rounded-full pl-10 pr-4 py-2 bg-white/60 dark:bg-neutral-800/50 border border-black/5 dark:border-white/6 outline-none placeholder:opacity-60 shadow-sm" placeholder="Search AI models, providers, purposes..." />
+      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-0 md:ml-16' : 'ml-0 md:ml-64'} transition-all duration-300`}>
+        <main className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h1 className="text-2xl font-bold">AI Models Management</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Configure and monitor platform AI models</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <TopRightControls unreadNotificationsCount={3} />
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/6 transition">
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] px-1 rounded-full">3</span>
-            </button>
-
-            <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/6 transition">
-              {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/40 dark:bg-white/8 border border-black/5 dark:border-white/6">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-400 flex items-center justify-center text-white text-sm font-semibold">
-                {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0) || 'A'}
-              </div>
-              <div className="text-sm">{session?.user?.name || session?.user?.email?.split('@')[0] || 'Admin'}</div>
+          {/* Toolbar */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600 dark:text-gray-400 mt-2">Model health, counts, and recent updates</p>
             </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-12 gap-6">
-        {/* Sidebar */}
-        <aside className={`${collapsed ? 'col-span-12 lg:col-span-1' : 'col-span-12 lg:col-span-2'} transition-all duration-300`}>
-          <div className={`sticky top-20 space-y-4`}>
-            <nav className={`rounded-3xl p-3 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg backdrop-blur-sm ${collapsed ? 'p-2' : 'p-3'}`}>
-              {[
-                {label:'Overview', icon:<Home className="w-5 h-5"/>, route: '/dashboard'},
-                {label:'Create Post', icon:<Rocket className="w-5 h-5"/>, route: '/create'},
-                {label:'Posts', icon:<FileText className="w-5 h-5"/>, route: '/posts'},
-                {label:'Analytics', icon:<BarChart3 className="w-5 h-5"/>, route: '/analytics'},
-                {label:'Calendar', icon:<Calendar className="w-5 h-5"/>, route: '/calendar'},
-                {label:'Settings', icon:<Settings className="w-5 h-5"/>, route: '/settings'}
-              ].map((it, idx)=> (
-                <Link
-                  key={idx}
-                  href={it.route}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 dark:hover:bg-white/6 transition text-sm ${collapsed ? 'justify-center px-2' : ''}`}
-                  title={collapsed ? it.label : undefined}
-                >
-                  <div className="p-2 rounded-lg bg-white/50 dark:bg-neutral-800/40">{it.icon}</div>
-                  {!collapsed && (
-                    <>
-                      <span className="flex-1 text-left">{it.label}</span>
-                    </>
-                  )}
-                </Link>
-              ))}
-
-              {/* App Owner Section */}
-              <div className="mt-6 pt-6 border-t border-black/5 dark:border-white/6">
-                <div className="text-xs opacity-70 px-1 mb-3">App Owner</div>
-                {[
-                  {label:'Dashboard', icon:<Shield className="w-5 h-5"/>, route: '/app-owner'},
-                  {label:'AI Models', icon:<Zap className="w-5 h-5"/>, route: '/app-owner/ai-models'},
-                  {label:'User Management', icon:<Users className="w-5 h-5"/>, route: '/app-owner/users'},
-                  {label:'System Health', icon:<Server className="w-5 h-5"/>, route: '/app-owner/health'},
-                  {label:'Billing', icon:<DollarSign className="w-5 h-5"/>, route: '/app-owner/billing'}
-                ].map((it, idx)=> (
-                  <Link
-                    key={idx}
-                    href={it.route}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-indigo-50 dark:hover:bg-white/6 transition text-sm ${collapsed ? 'justify-center px-2' : ''} ${it.route === '/app-owner/ai-models' ? 'bg-indigo-50 dark:bg-white/6' : ''}`}
-                    title={collapsed ? it.label : undefined}
-                  >
-                    <div className="p-2 rounded-lg bg-white/50 dark:bg-neutral-800/40">{it.icon}</div>
-                    {!collapsed && (
-                      <>
-                        <span className="flex-1 text-left">{it.label}</span>
-                        <div className="text-xs opacity-60">{it.route === '/app-owner/ai-models' ? 'Active' : ''}</div>
-                      </>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </nav>
-          </div>
-        </aside>
-
-        {/* Main content - FULL WIDTH */}
-        <main className={`${collapsed ? 'col-span-12 lg:col-span-11' : 'col-span-12 lg:col-span-10'} space-y-6`}>
-          <div className="space-y-6">
-            {/* Page Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Link href="/app-owner">
-                  <Button variant="outline" size="sm" className="flex items-center gap-2">
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to Dashboard
-                  </Button>
-                </Link>
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight">AI Models Management</h1>
-                  <p className="text-gray-600 dark:text-gray-400 mt-2">
-                    Configure and manage AI models for different purposes
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => {
-                  resetForm()
-                  setEditingModel(null)
-                  setShowAddForm(true)
-                }}
-                className="flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add Model
+            <div className="flex items-center gap-3">
+              <Button variant="outline" className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Refresh
+              </Button>
+              <Button className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Settings
               </Button>
             </div>
+          </div>
 
-                                      {/* Add/Edit Model Form */}
-              {showAddForm && (
-                <Card className="relative z-40 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700">
-                 <CardHeader className="relative">
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <CardTitle className="text-xl">
-                         {editingModel ? 'Edit AI Model' : 'Add New AI Model'}
-                       </CardTitle>
-                       <CardDescription>
-                         Configure a new AI model for your application
-                       </CardDescription>
-                     </div>
-                     <Button
-                       variant="ghost"
-                       size="sm"
-                       onClick={() => {
-                         setShowAddForm(false)
-                         setEditingModel(null)
-                         resetForm()
-                       }}
-                       className="h-8 w-8 p-0"
-                     >
-                       <XCircle className="h-4 w-4" />
-                     </Button>
-                   </div>
-                 </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <Label htmlFor="name">Model Name</Label>
-                        <Input
-                          id="name"
-                          value={formData.name}
-                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                          placeholder="e.g., Claude 3.5 Sonnet"
-                          required
-                          className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                        />
-                      </div>
+          {/* KPI Grid (dashboard styling) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Active Models</p>
+                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{activeModels}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-blue-600 dark:text-blue-400">{Math.round((activeModels / totalModels) * 100)}% in use</span>
+                    <Progress value={(activeModels / totalModels) * 100} className="flex-1 h-2" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                                                                     <div>
-                          <Label htmlFor="provider">Provider</Label>
-                          <Select
-                            value={formData.provider}
-                            onValueChange={(value) => setFormData({ ...formData, provider: value })}
-                          >
-                            <SelectTrigger className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="z-50">
-                              <SelectItem value="openai">OpenAI</SelectItem>
-                              <SelectItem value="anthropic">Anthropic</SelectItem>
-                              <SelectItem value="openrouter">OpenRouter</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-700">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-green-600 dark:text-green-400">Total Models</p>
+                    <p className="text-2xl font-bold text-green-900 dark:text-green-100">{totalModels}</p>
+                  </div>
+                  <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                    <span>Configured and available</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                                             <div>
-                         <Label htmlFor="model">Model Identifier</Label>
-                         <Input
-                           id="model"
-                           value={formData.model}
-                           onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                           placeholder="e.g., anthropic/claude-3.5-sonnet"
-                           required
-                           className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                         />
-                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                           Format: provider/model-name (e.g., openai/gpt-4, anthropic/claude-3.5-sonnet)
-                         </p>
-                       </div>
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border-purple-200 dark:border-purple-700">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Uptime</p>
+                    <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">{uptime}%</p>
+                  </div>
+                  <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <Progress value={uptime} className="h-2" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-                                                                     <div>
-                          <Label htmlFor="purpose">Purpose</Label>
-                          <Select
-                            value={formData.purpose}
-                            onValueChange={(value) => setFormData({ ...formData, purpose: value })}
-                          >
-                            <SelectTrigger className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="z-50">
-                              <SelectItem value="content_generation">Content Generation</SelectItem>
-                              <SelectItem value="hashtag_generation">Hashtag Generation</SelectItem>
-                              <SelectItem value="image_generation">Image Generation</SelectItem>
-                              <SelectItem value="chat">Chat</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                      <div>
-                        <Label htmlFor="maxTokens">Max Tokens</Label>
-                        <Input
-                          id="maxTokens"
-                          type="number"
-                          value={formData.maxTokens}
-                          onChange={(e) => setFormData({ ...formData, maxTokens: parseInt(e.target.value) })}
-                          min="1"
-                          max="4000"
-                          className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="temperature">Temperature</Label>
-                        <Input
-                          id="temperature"
-                          type="number"
-                          step="0.1"
-                          value={formData.temperature}
-                          onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
-                          min="0"
-                          max="2"
-                          className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="costPer1kTokens">Cost per 1K Tokens ($)</Label>
-                        <Input
-                          id="costPer1kTokens"
-                          type="number"
-                          step="0.001"
-                          value={formData.costPer1kTokens}
-                          onChange={(e) => setFormData({ ...formData, costPer1kTokens: parseFloat(e.target.value) })}
-                          min="0"
-                          className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                        />
-                      </div>
-                    </div>
-
-                                         {/* Performance Settings */}
-                     <div>
-                       <Label className="text-base font-medium">Performance Metrics</Label>
-                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                         Rate the model's performance on a scale of 0-100
-                       </p>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
-                         <div>
-                           <Label htmlFor="accuracy">Accuracy (0-100)</Label>
-                           <Input
-                             id="accuracy"
-                             type="number"
-                             value={formData.performance.accuracy}
-                             onChange={(e) => setFormData({
-                               ...formData,
-                               performance: { ...formData.performance, accuracy: parseInt(e.target.value) || 0 }
-                             })}
-                             min="0"
-                             max="100"
-                             className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                           />
-                         </div>
-                         <div>
-                           <Label htmlFor="speed">Speed (0-100)</Label>
-                           <Input
-                             id="speed"
-                             type="number"
-                             value={formData.performance.speed}
-                             onChange={(e) => setFormData({
-                               ...formData,
-                               performance: { ...formData.performance, speed: parseInt(e.target.value) || 0 }
-                             })}
-                             min="0"
-                             max="100"
-                             className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                           />
-                         </div>
-                         <div>
-                           <Label htmlFor="reliability">Reliability (0-100)</Label>
-                           <Input
-                             id="reliability"
-                             type="number"
-                             value={formData.performance.reliability}
-                             onChange={(e) => setFormData({
-                               ...formData,
-                               performance: { ...formData.performance, reliability: parseInt(e.target.value) || 0 }
-                             })}
-                             min="0"
-                             max="100"
-                             className="bg-white/60 dark:bg-neutral-800/50 border-blue-200 dark:border-blue-700"
-                           />
-                         </div>
-                       </div>
-                     </div>
-
-                                         {/* Toggles */}
-                     <div className="bg-white/40 dark:bg-neutral-800/40 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
-                       <Label className="text-base font-medium mb-3 block">Model Settings</Label>
-                       <div className="flex items-center gap-8">
-                         <div className="flex items-center space-x-3">
-                           <Switch
-                             id="isActive"
-                             checked={formData.isActive}
-                             onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-                           />
-                           <Label htmlFor="isActive" className="text-sm font-medium">
-                             Active Model
-                           </Label>
-                         </div>
-                         <div className="flex items-center space-x-3">
-                           <Switch
-                             id="isDefault"
-                             checked={formData.isDefault}
-                             onCheckedChange={(checked) => setFormData({ ...formData, isDefault: checked })}
-                           />
-                           <Label htmlFor="isDefault" className="text-sm font-medium">
-                             Default for Purpose
-                           </Label>
-                         </div>
-                       </div>
-                     </div>
-
-                                         {/* Form Actions */}
-                     <div className="flex items-center gap-4 pt-4 border-t border-blue-200 dark:border-blue-700">
-                       <Button type="submit" className="bg-blue-600 hover:bg-blue-700 px-6">
-                         {editingModel ? 'Update Model' : 'Add Model'}
-                       </Button>
-                       <Button
-                         type="button"
-                         variant="outline"
-                         onClick={() => {
-                           setShowAddForm(false)
-                           setEditingModel(null)
-                           resetForm()
-                         }}
-                         className="px-6"
-                       >
-                         Cancel
-                       </Button>
-                     </div>
-                  </form>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Models Grid */}
-            {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-                <p className="mt-4 text-gray-600 dark:text-gray-400">Loading AI models...</p>
+          {/* Model Registry */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl">Models</CardTitle>
+                  <CardDescription>Available AI models configured for the app</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowAddProvider((v) => !v)}>Add Provider</Button>
+                  <Button onClick={() => setShowAddModel((v) => !v)}>Add Model</Button>
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                {models.map((model) => (
-                  <Card key={model.id} className="relative hover:shadow-lg transition-all duration-300 border-0 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm">
-                    <CardHeader>
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="text-2xl">{getProviderIcon(model.provider)}</div>
-                          <div>
-                            <CardTitle className="text-lg">{model.name}</CardTitle>
-                            <CardDescription className="text-sm">{model.model}</CardDescription>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {model.isDefault && (
-                            <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                              Default
-                            </Badge>
-                          )}
-                          <Badge
-                            variant={model.isActive ? "default" : "secondary"}
-                            className={`text-xs ${model.isActive ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'}`}
-                          >
-                            {model.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <Badge className={`${getPurposeColor(model.purpose)} text-xs`}>
-                        {model.purpose.replace('_', ' ')}
+            </CardHeader>
+            <CardContent>
+              {error && (
+                <div className="mb-4 rounded-lg border border-red-300 bg-red-50/50 dark:border-red-800 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300">{String(error)}</div>
+              )}
+
+              {showAddProvider && (
+                <div className="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <input className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder="Provider name" value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} />
+                    <select className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" value={providerForm.type} onChange={(e) => setProviderForm({ ...providerForm, type: e.target.value })}>
+                      {['OPENAI','ANTHROPIC','GOOGLE','STABILITY','OPENROUTER','OLLAMA','CUSTOM'].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <input className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder="Base URL (optional)" value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} />
+                    <input className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder="API key env var (e.g., OPENAI_API_KEY)" value={providerForm.apiKeyEnvVar} onChange={(e) => setProviderForm({ ...providerForm, apiKeyEnvVar: e.target.value })} />
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <label className="text-sm flex items-center gap-2">
+                      <input type="checkbox" checked={providerForm.isActive} onChange={(e) => setProviderForm({ ...providerForm, isActive: e.target.checked })} /> Active
+                    </label>
+                    <Button size="sm" onClick={addProvider} disabled={isLoading}>Save Provider</Button>
+                  </div>
+                </div>
+              )}
+
+              {showAddModel && (
+                <div className="mb-6 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" value={modelForm.providerId} onChange={(e) => setModelForm({ ...modelForm, providerId: e.target.value })}>
+                      <option value="">Select provider</option>
+                      {providers.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.type})</option>
+                      ))}
+                    </select>
+                    <input className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder="Display name" value={modelForm.name} onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })} />
+                    <input className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder="Model ID (e.g., gpt-4o)" value={modelForm.modelId} onChange={(e) => setModelForm({ ...modelForm, modelId: e.target.value })} />
+                    <select className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" value={modelForm.modality} onChange={(e) => setModelForm({ ...modelForm, modality: e.target.value })}>
+                      {['TEXT','IMAGE','VIDEO','AUDIO','MULTIMODAL'].map((m) => (<option key={m} value={m}>{m}</option>))}
+                    </select>
+                    <textarea className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700 md:col-span-2" placeholder="System prompt (optional)" value={modelForm.systemPrompt} onChange={(e) => setModelForm({ ...modelForm, systemPrompt: e.target.value })} />
+                    <textarea className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder='Default options JSON (e.g., {"temperature":0.7})' value={modelForm.defaultOptions} onChange={(e) => setModelForm({ ...modelForm, defaultOptions: e.target.value })} />
+                    <textarea className="px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" placeholder='Capabilities JSON (e.g., {"styles":["cartoon","photo"]})' value={modelForm.capabilities} onChange={(e) => setModelForm({ ...modelForm, capabilities: e.target.value })} />
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <label className="text-sm flex items-center gap-2">
+                      <input type="checkbox" checked={modelForm.isActive} onChange={(e) => setModelForm({ ...modelForm, isActive: e.target.checked })} /> Active
+                    </label>
+                    <Button size="sm" onClick={addModel} disabled={isLoading || !modelForm.providerId || !modelForm.name || !modelForm.modelId}>Save Model</Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {models.map((m) => (
+                  <div key={m.id} className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold">{m.name}</div>
+                      <Badge variant="outline" className={m.isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}>
+                        {m.modality}
                       </Badge>
-                    </CardHeader>
-
-                    <CardContent>
-                      <div className="space-y-4">
-                        {/* Model Settings */}
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-600 dark:text-gray-400">Max Tokens:</span>
-                            <span className="ml-2 font-medium">{model.maxTokens}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600 dark:text-gray-400">Temperature:</span>
-                            <span className="ml-2 font-medium">{model.temperature}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600 dark:text-gray-400">Cost/1K:</span>
-                            <span className="ml-2 font-medium">${model.costPer1kTokens.toFixed(4)}</span>
-                          </div>
-                        </div>
-
-                        {/* Performance Metrics */}
-                        <div>
-                          <Label className="text-sm font-medium mb-2 block">Performance</Label>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Accuracy</span>
-                              <span className={`text-sm font-medium ${getPerformanceColor(model.performance.accuracy)}`}>
-                                {model.performance.accuracy}%
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Speed</span>
-                              <span className={`text-sm font-medium ${getPerformanceColor(model.performance.speed)}`}>
-                                {model.performance.speed}%
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm">Reliability</span>
-                              <span className={`text-sm font-medium ${getPerformanceColor(model.performance.reliability)}`}>
-                                {model.performance.reliability}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => editModel(model)}
-                            className="flex-1 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                          >
-                            <Edit className="w-4 h-4 mr-2" />
-                            Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => testModel(model.id)}
-                            className="flex-1 hover:bg-green-50 dark:hover:bg-green-900/20"
-                          >
-                            <TestTube className="w-4 h-4 mr-2" />
-                            Test
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                    <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">{m.modelId}</div>
+                  </div>
                 ))}
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            {!loading && models.length === 0 && (
-              <div className="text-center py-12">
-                <Settings className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  No AI models configured
-                </h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Get started by adding your first AI model configuration.
-                </p>
-                <Button onClick={() => setShowAddForm(true)} className="bg-blue-600 hover:bg-blue-700">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add First Model
-                </Button>
+          {/* Assign defaults per feature */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Default Models</CardTitle>
+              <CardDescription>Select primary model per feature (fallbacks optional)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {['CHAT_ASSISTANT','POST_GENERATOR','HASHTAG_GENERATOR','IMAGE_GENERATOR','VIDEO_GENERATOR','SCHEDULER_COPY','SUMMARIZER'].map((feature) => {
+                  const assigned = assignments.find((a) => a.feature === feature)
+                  const currentId = assigned?.models?.[0]?.model?.id ?? ''
+                  const modalityNeeded = feature.includes('IMAGE') ? 'IMAGE' : feature.includes('VIDEO') ? 'VIDEO' : 'TEXT'
+                  const candidates = models.filter((m) => m.modality === modalityNeeded && m.isActive)
+                  return (
+                    <div key={feature} className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/30">
+                      <div className="mb-2 text-sm font-medium">{feature.replaceAll('_',' ')}</div>
+                      <select className="w-full px-3 py-2 rounded-md bg-transparent border border-gray-300 dark:border-gray-700" value={currentId} onChange={(e) => assignPrimary(feature, e.target.value)}>
+                        <option value="">Select model</option>
+                        {candidates.map((m) => (
+                          <option key={m.id} value={m.id}>{m.name} ({m.modelId})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                })}
               </div>
-            )}
-          </div>
+            </CardContent>
+          </Card>
         </main>
       </div>
     </div>

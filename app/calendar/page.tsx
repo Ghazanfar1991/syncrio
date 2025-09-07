@@ -97,7 +97,7 @@ React.useEffect(() => {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
    
-        <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+        <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-24 md:pb-8 ${collapsed ? 'md:ml-16' : 'md:ml-64'} transition-all duration-300`}>
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-2xl flex items-center justify-center mb-6 mx-auto animate-pulse shadow-xl">
               <Calendar className="h-8 w-8 text-white" />
@@ -590,7 +590,7 @@ React.useEffect(() => {
       calendarDays.push(
         <div
           key={dateKey}
-          className={`min-h-[120px] p-3 rounded-2xl flex flex-col transition-all ${
+          className={`min-h-[76px] sm:min-h-[110px] p-1.5 sm:p-2 rounded-2xl flex flex-col transition-all ${
             isCurrentMonth ? 'bg-white/60 dark:bg-neutral-800/60 backdrop-blur-sm' : 'bg-gray-50/60 dark:bg-neutral-900/60 backdrop-blur-sm'
           } ${isToday ? 'ring-2 ring-blue-500 bg-blue-50/60 dark:bg-blue-900/20' : ''} ${
             selectedDate === dateKey ? 'ring-2 ring-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20' : ''
@@ -613,7 +613,26 @@ React.useEffect(() => {
         >
           <span className="font-medium text-sm mb-2">{currentDay.getDate()}</span>
           {dayPosts.length > 0 && (
-            <div className="space-y-1 flex-1">
+            <>
+              <div className="sm:hidden mt-1 flex flex-wrap gap-1.5">
+                {dayPosts.slice(0, 6).map((post, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => { e.stopPropagation(); handleEditPost(post) }}
+                    className="h-5 w-5 rounded-md bg-white/60 dark:bg-neutral-700/60 ring-1 ring-black/5 dark:ring-white/10 grid place-items-center"
+                    title={post.accountName || post.platform}
+                  >
+                    <span className="scale-[0.85]">
+                      {getPlatformIcon(post.platform)}
+                    </span>
+                  </button>
+                ))}
+                {dayPosts.length > 6 && (
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">+{dayPosts.length - 6}</span>
+                )}
+              </div>
+
+              <div className="hidden sm:block space-y-1 flex-1">
               {dayPosts.slice(0, 3).map((post, idx) => (
                 <div
                   key={idx}
@@ -666,7 +685,8 @@ React.useEffect(() => {
                   +{dayPosts.length - 3} more
                 </div>
               )}
-            </div>
+              </div>
+            </>
           )}
         </div>
       )
@@ -675,9 +695,9 @@ React.useEffect(() => {
     }
 
     return (
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-          <div key={day} className="p-3 text-center font-medium text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-neutral-800/60 backdrop-blur-sm rounded-2xl border border-black/5 dark:border-white/5">
+          <div key={day} className="py-1 text-center text-[11px] font-medium text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-neutral-800/60 backdrop-blur-sm rounded-2xl border border-black/5 dark:border-white/5">
             {day}
           </div>
         ))}
@@ -816,7 +836,7 @@ React.useEffect(() => {
       weekDays.push(
         <div
           key={dateKey}
-          className={`min-h-[120px] p-3 rounded-2xl flex flex-col transition-all ${
+          className={`min-h-[76px] sm:min-h-[110px] p-1.5 sm:p-2 rounded-2xl flex flex-col transition-all ${
             isCurrentMonth ? 'bg-white/60 dark:bg-neutral-800/60 backdrop-blur-sm' : 'bg-gray-50/60 dark:bg-neutral-900/60 backdrop-blur-sm'
           } ${isToday ? 'ring-2 ring-blue-500 bg-blue-50/60 dark:bg-blue-900/20' : ''} ${
             selectedDate === dateKey ? 'ring-2 ring-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20' : ''
@@ -846,7 +866,26 @@ React.useEffect(() => {
           </div>
           
           {dayPosts.length > 0 && (
-            <div className="space-y-1 flex-1">
+            <>
+              <div className="sm:hidden mt-1 flex flex-wrap gap-1.5">
+                {dayPosts.slice(0, 6).map((post, idx) => (
+                  <button
+                    key={idx}
+                    onClick={(e) => { e.stopPropagation(); handleEditPost(post) }}
+                    className="h-5 w-5 rounded-md bg-white/60 dark:bg-neutral-700/60 ring-1 ring-black/5 dark:ring-white/10 grid place-items-center"
+                    title={post.accountName || post.platform}
+                  >
+                    <span className="scale-[0.85]">
+                      {getPlatformIcon(post.platform)}
+                    </span>
+                  </button>
+                ))}
+                {dayPosts.length > 6 && (
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">+{dayPosts.length - 6}</span>
+                )}
+              </div>
+
+              <div className="hidden sm:block space-y-1 flex-1">
               {dayPosts.slice(0, 3).map((post, idx) => (
                 <div
                   key={idx}
@@ -897,9 +936,10 @@ React.useEffect(() => {
               {dayPosts.length > 3 && (
                 <div className="text-xs opacity-60 text-center py-1">
                   +{dayPosts.length - 3} more
-            </div>
+                </div>
               )}
-          </div>
+              </div>
+            </>
           )}
         </div>
       )
@@ -908,7 +948,7 @@ React.useEffect(() => {
     }
 
     return (
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1">
         {weekDays}
       </div>
     )
@@ -1116,19 +1156,22 @@ React.useEffect(() => {
         showPlanInfo={true}
       />
 
-      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+      <div className={`relative max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pt-3 pb-24 md:pb-8 ${collapsed ? 'md:ml-16' : 'md:ml-64'} transition-all duration-300 overflow-x-hidden`}>
+        {/* Top-right controls (3-dots on mobile) */}
+        <div className="absolute right-3 top-3 sm:top-4 z-20">
+          <TopRightControls unreadNotificationsCount={3} />
+        </div>
         <main className="space-y-3">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
                           <div>
                 <h2 className="text-xl font-semibold tracking-tight mb-1">Content Calendar</h2>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
                   Plan and manage your content schedule • {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)} View
                 </p>
               </div>
-            <div className="flex items-center gap-4">
-              <TopRightControls unreadNotificationsCount={3} />
-            </div>
+            {/* Controls floated to absolute top-right on mobile; keep empty spacer for layout */}
+            <div className="hidden sm:block h-9" />
           </div>
 
 
@@ -1139,8 +1182,8 @@ React.useEffect(() => {
             {/* Calendar View */}
             <Card className="rounded-3xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-950/40 backdrop-blur-2xl shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
               <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                     {/* View Mode Selection */}
                     <div className="flex items-center gap-2 bg-gray-100 dark:bg-neutral-800 rounded-2xl p-1 border border-black/5 dark:border-white/5">
                       <Button
@@ -1188,10 +1231,19 @@ React.useEffect(() => {
                         <Calendar className="w-4 h-4 mr-1" />
                         Day
                       </Button>
+                      {/* Inline create button */}
+                      <Button
+                        size="sm"
+                        onClick={() => (window.location.href = '/create')}
+                        className="ml-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow hover:from-rose-600 hover:to-pink-700"
+                        title="Create a new post"
+                      >
+                        + Post
+                      </Button>
                     </div>
                     
                     {/* Dynamic Toggle Based on View Mode */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1211,7 +1263,7 @@ React.useEffect(() => {
                       </Button>
                       
                       <div 
-                        className="text-center px-4 py-2 bg-white/60 dark:bg-neutral-800/60 rounded-xl border border-black/5 dark:border-white/5 cursor-pointer hover:bg-white/80 dark:hover:bg-neutral-700/80 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 group relative"
+                        className="text-center px-3 py-1.5 bg-white/60 dark:bg-neutral-800/60 rounded-xl border border-black/5 dark:border-white/5 cursor-pointer hover:bg-white/80 dark:hover:bg-neutral-700/80 hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 group relative text-sm"
                         onClick={(e) => {
                           console.log('Date display clicked!')
                           
@@ -1329,7 +1381,7 @@ React.useEffect(() => {
                             setCurrentDate(today)
                           }
                         }}
-                        className="px-3 py-2 rounded-xl border-black/10 dark:border-white/10 hover:bg-white/60 dark:hover:bg-neutral-700/60"
+                        className="px-3 py-1.5 rounded-xl border-black/10 dark:border-white/10 hover:bg-white/60 dark:hover:bg-neutral-700/60"
                       >
                         Today
                       </Button>
@@ -1338,22 +1390,7 @@ React.useEffect(() => {
                     </div>
               </div>
               
-                  {/* Action Buttons */}
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refreshCalendar}
-                  className="rounded-xl border-black/10 dark:border-white/10 hover:bg-white/60 dark:hover:bg-neutral-700/60"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </Button>
-                
-                <Button onClick={() => window.location.href = '/create'} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-lg hover:from-rose-700 hover:to-pink-800">
-                  <Plus className="w-4 h-4" />
-                  Create Post
-                </Button>
-              </div>
+              {/* Action button moved inline with view mode */}
             </div>
               </CardHeader>
               <CardContent className="p-6 pt-0">

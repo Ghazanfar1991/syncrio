@@ -126,9 +126,38 @@ export function Sidebar(props: SidebarProps) {
   const collapsedWidth = 68 // px
   const expandedWidth = 256 // px
 
+  // Reserve space for the mobile bottom bar so content isn't hidden behind it
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const MOBILE_BOTTOM_BAR_HEIGHT = 56 // px (h-14)
+    const mql = window.matchMedia('(max-width: 767px)')
+    const applyPadding = () => {
+      if (mql.matches) {
+        document.body.style.paddingBottom = `calc(${MOBILE_BOTTOM_BAR_HEIGHT}px + env(safe-area-inset-bottom))`
+        // Prevent horizontal page scroll; bottom bar handles its own x-scroll
+        document.body.style.overflowX = 'hidden'
+        document.documentElement.style.overflowX = 'hidden'
+      } else {
+        document.body.style.paddingBottom = ''
+        document.body.style.overflowX = ''
+        document.documentElement.style.overflowX = ''
+      }
+    }
+    applyPadding()
+    mql.addEventListener?.('change', applyPadding)
+    return () => {
+      document.body.style.paddingBottom = ''
+      document.body.style.overflowX = ''
+      document.documentElement.style.overflowX = ''
+      mql.removeEventListener?.('change', applyPadding)
+    }
+  }, [])
+
   return (
+    <>
+    {/* Desktop/Tablet sidebar */}
     <aside
-      className={`fixed left-0 top-0 h-screen z-50 transition-all duration-300 will-change-[width] ${className}`}
+      className={`hidden md:block fixed left-0 top-0 h-screen z-50 transition-all duration-300 will-change-[width] ${className}`}
       style={{ width: isCollapsed ? collapsedWidth : expandedWidth }}
       aria-expanded={!isCollapsed}
       data-collapsed={isCollapsed ? "true" : "false"}
@@ -231,5 +260,52 @@ export function Sidebar(props: SidebarProps) {
         </div>
       </div>
     </aside>
+
+    {/* Mobile bottom nav */}
+    <nav
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] h-14 border-t border-black/5 dark:border-white/10 bg-white/85 dark:bg-neutral-900/85 backdrop-blur supports-[backdrop-filter]:bg-white/65 dark:supports-[backdrop-filter]:bg-neutral-900/65 pb-[env(safe-area-inset-bottom)]"
+      aria-label="Primary"
+    >
+      <div className="h-full w-full max-w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden [overscroll-behavior-x:contain] [touch-action:pan-x]">
+        <ul className="flex h-full items-center gap-1.5 px-1.5 min-w-full w-max">
+          {navigationItems.map((item, idx) => {
+            const active = pathname === item.route
+            return (
+              <li key={`m-${idx}`} className="shrink-0">
+                <Link
+                  href={item.route}
+                  className={`group grid place-items-center rounded-xl px-2 py-1 transition-colors ${
+                    active
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : 'text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  <div
+                    className={`relative grid h-9 w-12 place-items-center rounded-lg ring-1 transition-all ${
+                      active
+                        ? 'bg-rose-50/70 ring-rose-200/70 dark:bg-rose-900/20 dark:ring-rose-800/40'
+                        : 'bg-white/50 ring-zinc-200/60 dark:bg-neutral-800/50 dark:ring-neutral-700/50'
+                    }`}
+                  >
+                    {/* icon */}
+                    <span className="grid place-items-center">
+                      {item.icon}
+                    </span>
+                    {/* active indicator dot */}
+                    {active && (
+                      <span className="absolute -bottom-1 h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_0_2px_rgba(255,255,255,0.9)] dark:shadow-[0_0_0_2px_rgba(24,24,27,0.9)]" />
+                    )}
+                  </div>
+                  <span className="mt-0.5 text-[10px] leading-none whitespace-nowrap">
+                    {item.label}
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </nav>
+    </>
   )
 }

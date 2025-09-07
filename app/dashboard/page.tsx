@@ -925,11 +925,15 @@ React.useEffect(() => {
         showPlanInfo={true}
       />
 
-      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+      <div className={`max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pt-3 pb-24 md:pb-8 ${collapsed ? 'md:ml-16' : 'md:ml-64'} transition-all duration-300 overflow-x-hidden relative`}>
+        {/* Top-right controls (3-dots on mobile) */}
+        <div className="absolute right-3 top-3 sm:top-4 z-20">
+          <TopRightControls unreadNotificationsCount={unreadNotificationsCount} />
+        </div>
         {/* Main area */}
         <main className="space-y-3">
           {/* KPI Row */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4">
           <div className="flex flex-col">
   <h2 className="text-xl font-semibold tracking-tight mb-1">
     Dashboard Overview
@@ -938,20 +942,9 @@ React.useEffect(() => {
     Overview of your social media performance
   </p>
 </div>
-
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/60 border border-black/10 dark:border-white/10 hover:bg-white/80 dark:hover:bg-neutral-700/80 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              </button>
-              <TopRightControls unreadNotificationsCount={unreadNotificationsCount} />
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <PremiumStat 
               title="Total Posts" 
               value={stats?.totalPosts?.toString() || "0"} 
@@ -987,9 +980,9 @@ React.useEffect(() => {
           </div>
 
           {/* Engagement and Notifications Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
             {/* Engagement card - Takes 2 columns on lg screens and above */}
-            <section className="lg:col-span-2 rounded-3xl p-5 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg backdrop-blur-sm">
+            <section className="lg:col-span-2 rounded-3xl p-4 sm:p-5 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg backdrop-blur-sm">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="text-sm font-semibold">Engagement</div>
@@ -1070,7 +1063,7 @@ React.useEffect(() => {
           </div>
 
           {/* AI Content, Recent Posts, and Platform Overview - 3 Column Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {/* AI Content Ideas */}
             <div className="rounded-3xl p-4 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg min-h-[300px]">
               <div className="flex items-center justify-between mb-3">
@@ -1327,7 +1320,7 @@ React.useEffect(() => {
           <div className="rounded-3xl p-4 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg">
             <div className="flex items-center justify-between mb-4">
               <div className="font-semibold">Publishing Calendar</div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 {/* View Toggle */}
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                                       <button
@@ -1392,7 +1385,7 @@ React.useEffect(() => {
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <span className="text-sm font-medium min-w-[120px] text-center">
+                  <span className="text-sm font-medium min-w-[100px] text-center">
                     {calendarViewMode === 'month' && formatMonthYear(currentDate)}
                     {calendarViewMode === 'week' && getWeekRange(currentDate)}
                     {calendarViewMode === 'day' && getDayName(currentDate)}
@@ -1413,7 +1406,8 @@ React.useEffect(() => {
 
   {/* Calendar Grid */}
   {calendarViewMode === 'month' && (
-              <div className="grid grid-cols-7 gap-1 mb-4">
+              <div className="overflow-x-auto -mx-2 px-2 [overscroll-behavior-x:contain] [touch-action:pan-x]">
+                <div className="grid min-w-[720px] sm:min-w-0 grid-cols-7 gap-1 mb-4">
                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
                   <div key={day} className="text-xs font-medium text-center py-2 opacity-60">
                     {day}
@@ -1442,7 +1436,7 @@ React.useEffect(() => {
                     days.push(
                       <div
                         key={day}
-                        className={`min-h-[100px] p-2 rounded-xl flex flex-col transition-all shadow-sm ${
+                        className={`min-h-[88px] sm:min-h-[100px] p-2 rounded-xl flex flex-col transition-all shadow-sm ${
                           isSelected 
                             ? 'bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md' 
                             : isDragOver
@@ -1526,12 +1520,14 @@ React.useEffect(() => {
                   
                   return days
                 })()}
+                </div>
               </div>
             )}
 
   {/* Week View */}
   {calendarViewMode === 'week' && (
-              <div className="grid grid-cols-7 gap-1 mb-4">
+              <div className="overflow-x-auto -mx-2 px-2 [overscroll-behavior-x:contain] [touch-action:pan-x]">
+                <div className="grid min-w-[720px] sm:min-w-0 grid-cols-7 gap-1 mb-4">
                 {(() => {
                   const weekStart = new Date(currentDate)
                   weekStart.setDate(currentDate.getDate() - currentDate.getDay())
@@ -1549,7 +1545,7 @@ React.useEffect(() => {
                     weekDays.push(
                       <div
                         key={i}
-                        className={`min-h-[120px] p-2 rounded-xl flex flex-col transition-all shadow-sm ${
+                        className={`min-h-[110px] sm:min-h-[120px] p-2 rounded-xl flex flex-col transition-all shadow-sm ${
                           isSelected 
                             ? 'bg-indigo-600 text-white ring-2 ring-indigo-300 shadow-md' 
                             : isDragOver
@@ -1625,6 +1621,7 @@ React.useEffect(() => {
                   
                   return weekDays
                 })()}
+                </div>
               </div>
             )}
 
@@ -1669,7 +1666,7 @@ React.useEffect(() => {
                           }}
                         >
                           {/* Header Section */}
-                          <div className="flex items-start justify-between mb-4 ml-35">
+                          <div className="flex items-start justify-between mb-4">
                             <div className="flex items-center gap-3">
                               {/* Platform Icon */}
                               {post.platform && (
@@ -1699,7 +1696,7 @@ React.useEffect(() => {
                           </div>
                           
                           {/* Content Section */}
-                          <div className="flex gap-4 -mt-13 mb-8">
+                          <div className="flex gap-4 mb-4">
                             {/* Media Preview - Always show */}
                             <div className="w-32 h-32 rounded-lg overflow-hidden bg-gray-100 dark:bg-neutral-700 border border-gray-200 dark:border-neutral-500 flex-shrink-0">
                               {post.videoUrl ? (
@@ -1766,7 +1763,7 @@ React.useEffect(() => {
                             </div>
 
                             {/* Text Content */}
-                            <div className="flex-1 min-w-0 mt-10 ml-10">
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                                 {post.content}
                               </p>
@@ -1774,7 +1771,7 @@ React.useEffect(() => {
                           </div>
                           
                           {/* Action Buttons */}
-                          <div className="-mt-9 flex gap-2 ml-35">
+                          <div className="flex gap-2">
                           
                             {post.status !== 'PUBLISHED' && post.status !== 'published' ? (
                               <>

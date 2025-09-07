@@ -921,7 +921,7 @@ React.useEffect(() => {
           showPlanInfo={true}
         />
 
-        <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+        <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-24 md:pb-8 ${collapsed ? 'md:ml-16' : 'md:ml-64'} transition-all duration-300`}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="rounded-3xl p-4 bg-white/60 dark:bg-neutral-900/60 border border-black/5 dark:border-white/5 shadow-lg animate-pulse">
@@ -946,11 +946,15 @@ React.useEffect(() => {
         showPlanInfo={true}
       />
 
-      <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
+      <div className={`relative max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pt-3 pb-24 md:pb-8 ${collapsed ? 'md:ml-16' : 'md:ml-64'} transition-all duration-300 overflow-x-hidden`}>
+        {/* Top-right controls (3-dots on mobile) */}
+        <div className="absolute right-3 top-3 sm:top-4 z-20">
+          <TopRightControls unreadNotificationsCount={3} />
+        </div>
         {/* Main area */}
         <main className="space-y-3">
           {/* KPI Row */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-4">
             <div className="flex flex-col">
  
               <h2 className="text-xl font-semibold tracking-tight mb-1">Posts</h2>
@@ -958,9 +962,7 @@ React.useEffect(() => {
                 Manage and track your social media content
               </p>
             </div>
-            <div className="flex items-center gap-4">
-              <TopRightControls unreadNotificationsCount={3} />
-            </div>
+            <div className="hidden sm:block h-9" />
           </div>
 
           {/* KPI Row */}
@@ -1020,7 +1022,7 @@ React.useEffect(() => {
         <div className="font-semibold">Filter Posts</div>
         <Link href="/create">
           <button className="px-3 py-2 rounded-full bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white flex items-center gap-2 shadow text-sm hover:scale-105 active:scale-95 transition-all duration-200">
-            <Plus className="w-4 h-4" /> New Post
+            <Plus className="w-4 h-4" /> + Post
           </button>
         </Link>
       </div>
@@ -1118,17 +1120,17 @@ React.useEffect(() => {
       
       {/* Info text for different tabs */}
       {filter === 'drafts' && (
-        <div className="mt-2 ml-130 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
+        <div className="mt-2 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
           Showing {filteredPosts.length} drafts from {dateRange.start} to {dateRange.end}
         </div>
       )}
       {filter === 'published' && (
-        <div className="mt-2 ml-118 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
+        <div className="mt-2 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
           Showing {filteredPosts.length} published posts from {dateRange.start} to {dateRange.end}
         </div>
       )}
       {filter === 'scheduled' && (
-        <div className="mt-2 ml-118 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
+        <div className="mt-2 -mb-2 text-xs text-gray-600 dark:text-gray-400 text-center">
           Showing {filteredPosts.length} scheduled posts from {dateRange.start} to {dateRange.end}
         </div>
       )}
@@ -1183,7 +1185,7 @@ React.useEffect(() => {
 )}
 
   {/* Status and Actions */}
-              <div className="flex items-center justify-between mb-3 flex-shrink-0 -mt-10 ml-40 -mr-10">
+              <div className="flex items-center justify-between mb-3 flex-shrink-0 mt-2">
                 <div className="flex items-center gap-2 ">
                   {(post.status === 'DRAFT' || post.status === 'SCHEDULED') && (
                     <div className={`px-2 py-1 rounded-lg text-[10px] font-medium ${getStatusColor(post.status)} hover:scale-105 transition-transform duration-200`}>
@@ -1201,7 +1203,7 @@ React.useEffect(() => {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                       <button 
-                        className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/6 mr-7 mt-1"
+                        className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/6"
                         onClick={(e) => e.stopPropagation()}
                       >
                               <MoreVertical className="h-5 w-5" />

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
@@ -88,31 +88,30 @@ model Subscription {
 }
 
 model SocialAccount {
-  id               String            @id @default(cuid())
-  userId           String
-  platform         SocialPlatform
-  accountId        String
-  accountName      String
-  displayName      String?
-  username        String?
-  accessToken      String
-  refreshToken     String?
-  expiresAt        DateTime?
-  // OAuth 1.0a fields for Twitter media uploads
-  consumerKey      String?
-  consumerSecret   String?
+  id                String            @id @default(cuid())
+  userId            String
+  platform          SocialPlatform
+  accountId         String
+  accountName       String
+  displayName       String?
+  username          String?
+  accessToken       String
+  refreshToken      String?
+  expiresAt         DateTime?
+  consumerKey       String?
+  consumerSecret    String?
   accessTokenSecret String?
-  oauth1AccessToken String? // OAuth 1.0a access token for media uploads
-  isActive         Boolean           @default(true)
-  isConnected      Boolean          @default(true)
-  accountType      AccountType      @default(PERSONAL)
-  permissions      Json?            @default("[]")
-  lastSync         DateTime?
-  metadata         Json?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  postPublications PostPublication[]
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oauth1AccessToken String?
+  isActive          Boolean           @default(true)
+  isConnected       Boolean           @default(true)
+  accountType       AccountType       @default(PERSONAL)
+  permissions       Json?             @default("[]")
+  lastSync          DateTime?
+  metadata          Json?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  postPublications  PostPublication[]
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, platform, accountId])
   @@map("social_accounts")
@@ -138,8 +137,8 @@ model Post {
   approvedBy     String?
   images         String?
   videos         String?
-  title          String?           // YouTube video title
-  description    String?           // YouTube video description
+  title          String?
+  description    String?
   analytics      PostAnalytics[]
   comments       PostComment[]
   publications   PostPublication[]
@@ -159,8 +158,8 @@ model PostPublication {
   errorMessage    String?
   publishedAt     DateTime?
   createdAt       DateTime          @default(now())
-  socialAccount   SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
   post            Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
   @@unique([postId, socialAccountId])
   @@map("post_publications")
@@ -231,8 +230,8 @@ model TeamMember {
   userId   String
   role     TeamRole @default(MEMBER)
   joinedAt DateTime @default(now())
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([teamId, userId])
   @@map("team_members")
@@ -245,8 +244,8 @@ model PostComment {
   content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("post_comments")
 }
@@ -254,12 +253,99 @@ model PostComment {
 model Cache {
   id        String   @id @default(cuid())
   key       String   @unique
-  value     String   // JSON string of cached data
+  value     String
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("cache")
+}
+
+model OAuthState {
+  id           String   @id @default(cuid())
+  state        String   @unique
+  codeVerifier String
+  platform     String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@map("oauth_states")
+}
+
+model AIProvider {
+  id              String         @id @default(cuid())
+  name            String
+  type            AIProviderType
+  base_url        String?
+  api_key_env_var String?
+  is_active       Boolean        @default(true)
+  metadata        Json?
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
+  ai_models       AIModel[]
+
+  @@map("ai_providers")
+}
+
+model AIModel {
+  id              String         @id @default(cuid())
+  provider_id     String
+  name            String
+  model_id        String
+  modality        AIModality     @default(TEXT)
+  system_prompt   String?
+  default_options Json?
+  capabilities    Json?
+  is_active       Boolean        @default(true)
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
+  ai_providers    AIProvider     @relation(fields: [provider_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "ai_models_provider_fk")
+  feature_models  FeatureModel[]
+
+  @@unique([provider_id, model_id], map: "ai_models_provider_model_unique")
+  @@index([provider_id], map: "ai_models_provider_idx")
+  @@map("ai_models")
+}
+
+model FeatureModel {
+  id         String    @id @default(cuid())
+  feature    AIFeature
+  model_id   String
+  priority   Int       @default(0)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  ai_models  AIModel   @relation(fields: [model_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "feature_models_model_fk")
+
+  @@unique([feature, priority], map: "feature_models_feature_priority_unique")
+  @@index([model_id], map: "feature_models_model_idx")
+  @@map("feature_models")
+}
+
+enum AIProviderType {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  STABILITY
+  OPENROUTER
+  OLLAMA
+  CUSTOM
+}
+
+enum AIModality {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  MULTIMODAL
+}
+
+enum AIFeature {
+  CHAT_ASSISTANT
+  POST_GENERATOR
+  HASHTAG_GENERATOR
+  IMAGE_GENERATOR
+  VIDEO_GENERATOR
+  SCHEDULER_COPY
+  SUMMARIZER
 }
 
 enum SubscriptionTier {
@@ -329,15 +415,4 @@ enum AccountType {
   PERSONAL
   BUSINESS
   CREATOR
-}
-
-model OAuthState {
-  id           String   @id @default(cuid())
-  state        String   @unique
-  codeVerifier String
-  platform     String
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
-
-  @@map("oauth_states")
 }

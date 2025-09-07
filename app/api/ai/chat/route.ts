@@ -8,7 +8,7 @@ import { z } from 'zod'
 // Define chat request schema
 const chatRequestSchema = z.object({
   message: z.string().min(1),
-  platform: z.enum(['X', 'TWITTER', 'LINKEDIN', 'INSTAGRAM', 'YOUTUBE']).optional(),
+  platform: z.enum(['X', 'TWITTER', 'LINKEDIN', 'INSTAGRAM', 'YOUTUBE', 'FACEBOOK']).optional(),
   context: z.object({
     content: z.string()
   }).partial().optional()

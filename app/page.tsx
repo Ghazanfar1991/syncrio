@@ -787,38 +787,40 @@ export default function AuroraLanding() {
 
       {/* Nav */}
       <header className="relative z-10">
-<div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:py-5 md:px-6">
-  <div className="flex items-center gap-3">
-    <div className="relative h-12 w-12 sm:h-14 sm:w-14 overflow-hidden rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
-      {/* Logo Image */}
-      <img src="/applogo.PNG" alt="Syncrio Logo" className="w-full h-full object-contain" loading="lazy" decoding="async" />
-    </div>
-    <div>
-      <span className="text-base sm:text-lg font-semibold tracking-tight">Syncrio</span>
-      <div className="text-xs sm:text-sm text-zinc-500">Your AI Powered Social Amplifier</div> {/* Tagline */}
-    </div>
-  </div>
+        <div className="mx-auto max-w-7xl px-4 py-3 sm:py-4 md:px-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="relative h-10 w-10 sm:h-14 sm:w-14 overflow-hidden rounded-lg ring-1 ring-zinc-200 dark:ring-zinc-800">
+                {/* Logo Image */}
+                <img src="/applogo.PNG" alt="Syncrio Logo" className="w-full h-full object-contain" loading="lazy" decoding="async" />
+              </div>
+              <div className="min-w-0">
+                <span className="block truncate text-base sm:text-lg font-semibold tracking-tight">Syncrio</span>
+                <div className="truncate text-xs sm:text-sm text-zinc-500">Your AI Powered Social Amplifier</div>
+              </div>
+            </div>
 
+            <div className="hidden items-center gap-6 md:flex">
+              <a className="text-sm text-muted-foreground hover:text-foreground" href="#features">Features</a>
+              <a className="text-sm text-muted-foreground hover:text-foreground" href="#how">How it works</a>
+              <a className="text-sm text-muted-foreground hover:text-foreground" href="#pricing">Pricing</a>
+              <a className="text-sm text-muted-foreground hover:text-foreground" href="#faq">FAQ</a>
+            </div>
 
+            <div className="flex items-center gap-2 justify-between w-full sm:w-auto">
+              <ThemeToggle className="h-8 w-12 sm:w-16" />
 
-          <div className="hidden items-center gap-6 md:flex">
-            <a className="text-sm text-muted-foreground hover:text-foreground" href="#features">Features</a>
-            <a className="text-sm text-muted-foreground hover:text-foreground" href="#how">How it works</a>
-            <a className="text-sm text-muted-foreground hover:text-foreground" href="#pricing">Pricing</a>
-            <a className="text-sm text-muted-foreground hover:text-foreground" href="#faq">FAQ</a>
-          </div>
+              <Link href="/auth/signin">
+                <CTAButton variant="ghost" className="hidden sm:inline-flex">Sign in</CTAButton>
+              </Link>
 
-          <div className="flex items-center gap-2">
-            <ThemeToggle className="h-8 w-16" />
-
-
-            <Link href="/auth/signin">
-              <CTAButton variant="ghost" className="hidden sm:inline-flex">Sign in</CTAButton>
-            </Link>
-
-            <Link href="/auth/signup">
-              <CTAButton>Get started</CTAButton>
-            </Link>
+              <Link href="/auth/signup">
+                <CTAButton className="px-3 py-1.5 sm:px-4 sm:py-2">
+                  <span className="sm:hidden">Start</span>
+                  <span className="hidden sm:inline">Get started</span>
+                </CTAButton>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
