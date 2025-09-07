@@ -1,6 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
+import React from 'react';
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { TopRightControls } from "@/components/layout/top-right-controls"
@@ -12,7 +13,18 @@ import Link from "next/link"
 export default function SettingsPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
 
 
 

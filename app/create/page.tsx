@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -250,7 +251,18 @@ export default function CreatePage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
 
   // Advanced Edit Modal state
   const [isAdvancedEditOpen, setIsAdvancedEditOpen] = useState(false)

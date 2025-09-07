@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect, useParams } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -84,7 +85,18 @@ export default function PlatformAnalyticsPage() {
   })
   const [isCustomDateRange, setIsCustomDateRange] = useState(false)
   const [selectedPost, setSelectedPost] = useState<any>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
 
 
 

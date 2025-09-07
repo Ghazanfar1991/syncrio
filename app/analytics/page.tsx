@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -16,7 +17,18 @@ import { format } from 'date-fns'
 
 export default function AnalyticsPage() {
   const { data: session, status } = useSession()
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
   const [period, setPeriod] = useState('30')
   const [dateRange, setDateRange] = useState<{
     startDate: string
@@ -62,12 +74,7 @@ export default function AnalyticsPage() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-all duration-200">
-        {/* Sidebar */}
-        <Sidebar 
-          collapsed={collapsed}
-          onToggleCollapse={setCollapsed}
-          showPlanInfo={true}
-        />
+
 
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
           <div className="flex items-center justify-center min-h-[400px]">

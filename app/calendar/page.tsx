@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { createPortal } from 'react-dom'
@@ -57,7 +58,6 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [loading, setLoading] = useState(true)
-  const [collapsed, setCollapsed] = useState(false)
   const postDetailsRef = useRef<HTMLDivElement>(null)
   const [editingPost, setEditingPost] = useState<CalendarPost | null>(null)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -73,6 +73,18 @@ export default function CalendarPage() {
   const [aiSuggestedTimes, setAiSuggestedTimes] = useState<string[]>([])
   const [isScheduling, setIsScheduling] = useState(false)
   const { toast } = useToast()
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
 
   useEffect(() => {
     if (session) {
@@ -84,11 +96,7 @@ export default function CalendarPage() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
-        <Sidebar 
-          collapsed={collapsed}
-          onToggleCollapse={setCollapsed}
-          showPlanInfo={true}
-        />
+   
         <div className={`max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-cyan-400 rounded-2xl flex items-center justify-center mb-6 mx-auto animate-pulse shadow-xl">

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { useTheme } from '@/components/providers/theme-provider'
@@ -84,7 +85,18 @@ export default function AppOwnerAIModelsPage() {
   const { data: session, status } = useSession()
   const { theme, toggleTheme } = useTheme()
   const dark = theme === 'dark'
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
   const [models, setModels] = useState<AIModel[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)

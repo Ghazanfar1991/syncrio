@@ -493,24 +493,45 @@ function IntegrationsCarousel() {
   const [centerIdx, setCenterIdx] = useState(Math.floor(loop.length / 2));
   const [paused, setPaused] = useState(false);
 
+  // Stage sizing based on container width
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [stageW, setStageW] = useState(0);
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setStageW(entry.contentRect.width);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+  const clamp = (min: number, val: number, max: number) => Math.max(min, Math.min(val, max));
+  // Responsive geometry
+  const isXS = stageW < 370;
+  const isSM = stageW >= 370 && stageW < 520;
+  const visibleCount = isXS ? 3 : isSM ? 5 : 5; // use odd on desktop for true center
+  const oddCount = visibleCount % 2 === 0 ? visibleCount + 1 : visibleCount; // ensure a center
+  const half = Math.floor(oddCount / 2);
+  const cardSize = Math.round(clamp(64, stageW * 0.18, 112));
+  const spacing = Math.round(clamp(64, stageW * 0.22, 124));
+  const arcHeight = Math.round(clamp(28, stageW * 0.12, 56));
+  const stageHeight = Math.round(clamp(150, cardSize * 2.0, 260));
+
   // Timing controls: smooth move + 1s pause on center
   const transitionMs = 600; // movement duration
   const pauseMs = 1000;     // center hold duration
 
-  // Smooth auto-advance right-to-left; pause on hover
+  // Smooth auto-advance right-to-left; pause on hover/touch
   useEffect(() => {
     if (paused) return;
     const period = transitionMs + pauseMs; // move time + center pause
     const id = setInterval(() => {
-      // Reverse direction
       setCenterIdx((i) => (i + 1) % loop.length);
     }, period);
     return () => clearInterval(id);
   }, [paused, loop.length, transitionMs, pauseMs]);
 
   // Single row only — arrange cards on a clean arc
-  const visibleCount = 6;
-  const half = Math.floor(visibleCount / 2);
   const getVisible = () => {
     const arr: any[] = [];
     for (let o = -half; o <= half; o++) {
@@ -527,10 +548,8 @@ function IntegrationsCarousel() {
   const next = () => setCenterIdx((i) => (i + 1) % loop.length);
   const prev = () => setCenterIdx((i) => (i - 1 + loop.length) % loop.length);
 
-  const arcHeight = 45; // px lift for center card
   const maxTilt = 10;   // max degrees of outward tilt
   const minScale = 0.86; // scale at the far edges
-  const spacing = 124;  // a bit more horizontal spacing between cards (px)
   const centerPopScale = 1.06; // quick pop when a card becomes center
   const centerPopLift = 6;     // extra upward lift for the center card
 
@@ -556,7 +575,7 @@ function IntegrationsCarousel() {
     return (
       <img
         alt={name}
-        src={`https://cdn.simpleicons.org/${slug}/${dark ? color /* darkColor already computed when passing */ : color}`}
+        src={`https://cdn.simpleicons.org/${slug}/${color}`}
         className="h-9 w-9 sm:h-10 sm:w-10 drop-shadow-sm"
         loading="lazy"
         decoding="async"
@@ -566,51 +585,53 @@ function IntegrationsCarousel() {
     );
   };
 
-   // Optional: Create smooth animations on hover or auto-slide
-  const handleMouseEnter = () => setPaused(true);
-  const handleMouseLeave = () => setPaused(false);
+  // Touch pause + swipe-to-advance
+  const touchStartX = React.useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    setPaused(true);
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartX.current;
+    const end = e.changedTouches[0].clientX;
+    touchStartX.current = null;
+    setPaused(false);
+    if (start == null) return;
+    const dx = end - start;
+    const threshold = 30;
+    if (Math.abs(dx) > threshold) {
+      if (dx < 0) next(); else prev();
+    }
+  };
 
   return (
     <div
       className="mx-auto w-full max-w-4xl select-none"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      ref={containerRef}
     >
       <div className="relative">
         {/* Controls */}
-        <div className="pointer-events-auto absolute -left-4 top-1/2 -translate-y-1/2 sm:-left-8">
+        <div className="pointer-events-auto absolute -left-4 top-1/2 -translate-y-1/2 sm:-left-8 hidden sm:block">
           <button onClick={prev} aria-label="Previous" className="rounded-full bg-white/80 p-2 shadow ring-1 ring-zinc-900/5 hover:bg-white dark:bg-zinc-900/70 dark:ring-white/10">
             <ChevronLeft className="h-5 w-5" />
           </button>
         </div>
-        <div className="pointer-events-auto absolute -right-4 top-1/2 -translate-y-1/2 sm:-right-8">
+        <div className="pointer-events-auto absolute -right-4 top-1/2 -translate-y-1/2 sm:-right-8 hidden sm:block">
           <button onClick={next} aria-label="Next" className="rounded-full bg-white/80 p-2 shadow ring-1 ring-zinc-900/5 hover:bg-white dark:bg-zinc-900/70 dark:ring-white/10">
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
 
         {/* Arc-aligned stage with absolute positioning for smooth motion */}
-        <div className="relative h-48 sm:h-56">
-          {/* Label above, centered near the arc apex */}
-          <div
-            className="pointer-events-none absolute left-1/2 top-1/2 text-center"
-            style={{ transform: "translate(-50%, calc(-50% - 76px))" }}
-          >
-            <motion.div
-              key={center.name + centerIdx}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.25 }}
-              className="text-xl font-bold sm:text-2xl mt-80"
-            >
-              {center.name}
-            </motion.div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">Connect in seconds</div>
-          </div>
+        <div className="relative" style={{ height: stageHeight }}>
           {row.map((item, i) => {
-            // Show exactly 6 cards: drop the far-left tile when 7 are computed
-            if (row.length === 7 && i === 0) return null;
+            // If requested even visibleCount, drop the far-left tile so we still render an odd count with a center
+            const shouldDropLeft = oddCount !== visibleCount;
+            if (shouldDropLeft && i === 0) return null;
             const offset = i - half; // -half..half, left to right
             const d = Math.abs(offset);
             // Parabolic arc for vertical position
@@ -628,14 +649,16 @@ function IntegrationsCarousel() {
               y -= centerPopLift;
             }
 
+            const logoColor = dark ? item.darkColor : item.color;
+
             return (
               <motion.div
                 key={item.srcIdx ?? item.key}
                 initial={{ x, y, opacity: 1 }}
                 animate={{ x, y, rotate, scale, opacity }}
                 transition={{ type: "tween", ease: [0.22, 0.61, 0.36, 1], duration: transitionMs / 1000 }}
-                className="group absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-24 w-24 sm:h-28 sm:w-28 rounded-2xl bg-white/80 shadow-sm ring-1 ring-zinc-900/5 backdrop-blur grid place-items-center dark:bg-zinc-900/60 dark:ring-white/10"
-                style={{ zIndex, boxShadow: isCenter ? "0 10px 30px rgba(0,0,0,0.08)" : "0 6px 16px rgba(0,0,0,0.04)" }}
+                className="group absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-white/80 shadow-sm ring-1 ring-zinc-900/5 backdrop-blur grid place-items-center dark:bg-zinc-900/60 dark:ring-white/10"
+                style={{ zIndex, boxShadow: isCenter ? "0 10px 30px rgba(0,0,0,0.08)" : "0 6px 16px rgba(0,0,0,0.04)", width: cardSize, height: cardSize }}
               >
                 {isCenter ? (
                   <motion.div
@@ -644,16 +667,31 @@ function IntegrationsCarousel() {
                     animate={{ scale: [1, centerPopScale, 1] }}
                     transition={{ duration: 0.45, ease: "easeOut" }}
                   >
-                    <LogoImg slug={item.slug} color={dark ? item.darkColor : item.color} name={item.name} />
+                    <LogoImg slug={item.slug} color={logoColor} name={item.name} />
                   </motion.div>
                 ) : (
                   <div>
-                    <LogoImg slug={item.slug} color={dark ? item.darkColor : item.color} name={item.name} />
+                    <LogoImg slug={item.slug} color={logoColor} name={item.name} />
                   </div>
                 )}
               </motion.div>
             );
           })}
+        </div>
+
+        {/* Label below the arc, centered */}
+        <div className="-mt-10 text-center">
+          <motion.div
+            key={center.name + centerIdx}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.25 }}
+            className="text-base font-semibold sm:text-lg"
+          >
+            {center.name}
+          </motion.div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">Connect in seconds</div>
         </div>
 
         {/* Label moved above the arc, so removed from here */}

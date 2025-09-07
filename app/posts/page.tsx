@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -90,11 +91,22 @@ export default function PostsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [publishingPosts, setPublishingPosts] = useState<Set<string>>(new Set())
   const [publishedPosts, setPublishedPosts] = useState<Set<string>>(new Set())
-  const [collapsed, setCollapsed] = useState(false)
   const hasLoadedRef = useRef(false)
   const sessionReadyRef = useRef(false)
   const [userDateOverride, setUserDateOverride] = useState(false)
   const dateInitializedRef = useRef(false)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
 
 
 

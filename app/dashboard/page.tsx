@@ -1,6 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
+import React from 'react';
 import { useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { createPortal } from "react-dom"
@@ -170,7 +171,6 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const dark = false // Theme is now handled by the top-right controls component
-  const [collapsed, setCollapsed] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -181,6 +181,19 @@ export default function DashboardPage() {
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [reschedulingPost, setReschedulingPost] = useState<any | null>(null)
   const [showAdvancedEditModal, setShowAdvancedEditModal] = useState(false)
+
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
   
   // Drag and Drop states
   const [draggedPost, setDraggedPost] = useState<any | null>(null)

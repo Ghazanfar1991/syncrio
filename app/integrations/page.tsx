@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import React from 'react';
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
@@ -112,7 +113,6 @@ const PLATFORM_META: Record<Platform, {
 
 export default function IntegrationsPage() {
   const { data: session, status } = useSession()
-  const [collapsed, setCollapsed] = useState(false)
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -120,6 +120,18 @@ export default function IntegrationsPage() {
   const [platformFilter, setPlatformFilter] = useState<Platform | "All">("All")
   const [connectModalOpen, setConnectModalOpen] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null)
+  const [collapsed, setCollapsed] = React.useState<boolean>(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+  } catch {
+    return false;
+  }
+});
+
+React.useEffect(() => {
+  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+}, [collapsed]);
   // Facebook Pages selection state
   const [fbPages, setFbPages] = useState<Array<{ id: string; name: string }>>([])
   const [fbPageModalOpen, setFbPageModalOpen] = useState(false)
@@ -497,12 +509,7 @@ export default function IntegrationsPage() {
   if (status === 'loading') {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
-        {/* Sidebar */}
-        <Sidebar 
-          collapsed={collapsed}
-          onToggleCollapse={setCollapsed}
-          showPlanInfo={true}
-        />
+
 
         <div className={`max-w-[1400px] mx-auto px-3 sm:px-4 lg:px-6 pt-4 pb-8 ${collapsed ? 'ml-16' : 'ml-64'} transition-all duration-300`}>
           <div className="text-center">
