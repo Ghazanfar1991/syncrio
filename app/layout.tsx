@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
-import { initializeScheduler } from "@/lib/scheduler";
 import { Toaster } from "@/components/ui/toaster";
 import { UploadProgressProvider } from "@/components/upload-progress-provider";
 
@@ -27,11 +26,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Initialize scheduler on server start
-  if (typeof window === 'undefined') {
-    initializeScheduler();
-  }
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body

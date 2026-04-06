@@ -1,4 +1,4 @@
-// API utility functions
+// API utility functions - Updated for Supabase (snake_case -> camelCase)
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
@@ -21,15 +21,12 @@ export function validateRequest<T>(schema: z.ZodSchema<T>, data: any): T {
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error('🔍 Validation error details:', error.errors)
-      console.error('🔍 Received data:', JSON.stringify(data, null, 2))
-      console.error('🔍 Full error object:', error)
       const errorMessages = error.errors?.map(e => {
         const path = e.path.length > 0 ? e.path.join('.') : 'root'
         return `${path}: ${e.message}`
       }) || ['Unknown validation error']
       throw new Error(`Validation error: ${errorMessages.join(', ')}`)
     }
-    console.error('🔍 Non-Zod validation error:', error)
     throw error
   }
 }
@@ -45,11 +42,11 @@ export const schemas = {
 
   // Post schemas
   createPost: z.object({
-    content: z.string().max(2000).nullable().optional(), // Allow null/empty content for video-only posts
+    content: z.string().max(2000).nullable().optional(),
     hashtags: z.array(z.string()).optional(),
-    imageUrl: z.string().nullable().optional(), // Allow null values
+    imageUrl: z.string().nullable().optional(),
     images: z.array(z.string()).optional(),
-    videoUrl: z.string().nullable().optional(), // Allow null values
+    videoUrl: z.string().nullable().optional(),
     videos: z.array(z.string()).optional(),
     platform: z.string().optional(),
     socialAccountIds: z.array(z.string()).min(1, 'At least one social account must be selected'),
@@ -58,24 +55,12 @@ export const schemas = {
       const date = new Date(val)
       return !isNaN(date.getTime())
     }, 'Invalid date format').optional(),
-    // YouTube-specific fields
-    title: z.string().max(100).optional(), // YouTube title limit
-    description: z.string().max(5000).optional() // YouTube description limit
+    title: z.string().max(100).optional(),
+    description: z.string().max(5000).optional()
   }).refine((data) => {
-    // Require either content or video content or image content
     const hasContent = data.content && data.content.trim().length > 0
     const hasVideo = (data.videoUrl && data.videoUrl.length > 0) || (data.videos && data.videos.length > 0)
     const hasImage = (data.imageUrl && data.imageUrl.length > 0) || (data.images && data.images.length > 0)
-
-    console.log('🔍 Validation check:', {
-      hasContent,
-      hasVideo,
-      hasImage,
-      contentLength: data.content?.length || 0,
-      videoUrl: data.videoUrl?.substring(0, 50) || 'none',
-      videosCount: data.videos?.length || 0
-    })
-
     return hasContent || hasVideo || hasImage
   }, {
     message: "Post must have either text content, video, or image"
@@ -84,10 +69,10 @@ export const schemas = {
   updatePost: z.object({
     content: z.string().min(1).max(2000).optional(),
     hashtags: z.array(z.string()).optional(),
-    imageUrl: z.string().optional(), // Accept any string (including base64)
-    images: z.array(z.string()).optional(), // Accept any string (including base64)
-    videoUrl: z.string().optional(), // Accept any string (including base64)
-    videos: z.array(z.string()).optional(), // Accept any string (including base64)
+    imageUrl: z.string().optional(),
+    images: z.array(z.string()).optional(),
+    videoUrl: z.string().optional(),
+    videos: z.array(z.string()).optional(),
     status: z.enum(['DRAFT', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'FAILED']).optional(),
     scheduledAt: z.string().refine((val) => {
       if (!val) return true
@@ -98,12 +83,12 @@ export const schemas = {
 
   // Social account schemas
   connectSocialAccount: z.object({
-    platform: z.enum(['TWITTER', 'LINKEDIN', 'INSTAGRAM', 'YOUTUBE']),
+    platform: z.string(),
     accessToken: z.string(),
     refreshToken: z.string().optional(),
     accountId: z.string(),
     accountName: z.string(),
-    expiresAt: z.string().datetime().optional()
+    expiresAt: z.string().optional()
   }),
 
   // Chat message schemas
@@ -115,7 +100,7 @@ export const schemas = {
 
   // Subscription schemas
   updateSubscription: z.object({
-    tier: z.enum(['STARTER', 'GROWTH', 'BUSINESS', 'AGENCY'])
+    tier: z.string()
   })
 }
 
@@ -144,46 +129,134 @@ export function parseDate(dateString?: string): Date | undefined {
   return isNaN(date.getTime()) ? undefined : date
 }
 
-// Response formatting
+// Response formatting - Converts snake_case from Supabase to camelCase for Frontend
 export function formatUser(user: any) {
-  const { password, ...userWithoutPassword } = user
-  return userWithoutPassword
+  if (!user) return null
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    bundleSocialTeamId: user.bundle_social_team_id,
+    subscriptionTier: user.subscription?.tier || user.subscription_tier,
+    subscription: user.subscription ? formatSubscription(user.subscription) : null,
+    socialAccounts: user.social_accounts?.map(formatSocialAccount) || [],
+    createdAt: user.created_at,
+    updatedAt: user.updated_at,
+    _count: user._count
+  }
+}
+
+export function formatSubscription(sub: any) {
+  if (!sub) return null
+  return {
+    id: sub.id,
+    userId: sub.user_id,
+    tier: sub.tier,
+    status: sub.status,
+    currentPeriodStart: sub.current_period_start,
+    currentPeriodEnd: sub.current_period_end,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    createdAt: sub.created_at,
+    updatedAt: sub.updated_at
+  }
 }
 
 export function formatPost(post: any) {
+  if (!post) return null
   return {
-    ...post,
-    createdAt: post.createdAt.toISOString(),
-    updatedAt: post.updatedAt.toISOString(),
-    scheduledAt: post.scheduledAt?.toISOString(),
-    publishedAt: post.publishedAt?.toISOString()
+    id: post.id,
+    userId: post.user_id,
+    content: post.content,
+    hashtags: post.hashtags,
+    imageUrl: post.image_url,
+    images: post.images,
+    videoUrl: post.video_url,
+    videos: post.videos,
+    platform: post.platform,
+    status: post.status,
+    scheduledAt: post.scheduled_at,
+    publishedAt: post.published_at,
+    title: post.title,
+    description: post.description,
+    createdAt: post.created_at,
+    updatedAt: post.updated_at,
+    publications: post.publications?.map(formatPublication) || [],
+    analytics: post.analytics?.map(formatAnalytics) || []
+  }
+}
+
+export function formatPublication(pub: any) {
+  if (!pub) return null
+  return {
+    id: pub.id,
+    postId: pub.post_id,
+    socialAccountId: pub.social_account_id,
+    platform: pub.platform,
+    status: pub.status,
+    publishedAt: pub.published_at,
+    errorMessage: pub.error_message,
+    socialAccount: pub.social_account ? formatSocialAccount(pub.social_account) : null,
+    createdAt: pub.created_at,
+    updatedAt: pub.updated_at
   }
 }
 
 export function formatSocialAccount(account: any) {
-  const { accessToken, refreshToken, ...accountWithoutTokens } = account
+  if (!account) return null
   return {
-    ...accountWithoutTokens,
-    hasValidTokens: !!(accessToken && (!account.expiresAt || account.expiresAt > new Date()))
+    id: account.id,
+    userId: account.user_id,
+    platform: account.platform,
+    accountId: account.account_id,
+    accountName: account.account_name,
+    displayName: account.display_name,
+    username: account.username,
+    accountType: account.account_type,
+    isConnected: account.is_connected,
+    isActive: account.is_active,
+    bundleSocialAccountId: account.bundle_social_account_id,
+    createdAt: account.created_at,
+    updatedAt: account.updated_at,
+    hasValidTokens: !!(account.access_token && (!account.expires_at || new Date(account.expires_at) > new Date()))
   }
 }
 
-// Helper functions for hashtag conversion (SQLite compatibility)
+export function formatAnalytics(analytics: any) {
+  if (!analytics) return null
+  return {
+    id: analytics.id,
+    postId: analytics.post_id,
+    platform: analytics.platform,
+    likes: analytics.likes,
+    comments: analytics.comments,
+    shares: analytics.shares,
+    clicks: analytics.clicks,
+    reach: analytics.reach,
+    lastFetchedAt: analytics.last_fetched_at
+  }
+}
+
+// Helper functions for hashtag conversion
 export function hashtagsToString(hashtags: string[]): string {
   return JSON.stringify(hashtags || [])
 }
 
 export function hashtagsFromString(hashtagsString: string): string[] {
   try {
-    return JSON.parse(hashtagsString || '[]')
+    if (!hashtagsString) return []
+    if (Array.isArray(hashtagsString)) return hashtagsString
+    return JSON.parse(hashtagsString)
   } catch {
     return []
   }
 }
 
 export function formatPostWithHashtags(post: any) {
+  if (!post) return null
+  const formatted = formatPost(post)
   return {
-    ...formatPost(post),
+    ...formatted,
     hashtags: hashtagsFromString(post.hashtags)
   }
 }

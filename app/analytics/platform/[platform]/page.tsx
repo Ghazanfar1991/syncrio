@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect, useParams } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -68,7 +68,7 @@ interface PlatformAnalytics {
 }
 
 export default function PlatformAnalyticsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
   const params = useParams()
   const platform = params.platform as string
   
@@ -108,8 +108,8 @@ React.useEffect(() => {
   }, [platform, period, dateRange, isCustomDateRange, session])
 
   // Early returns after all hooks are called
-  if (status === 'loading') {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  if (sessionLoading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading session...</div>
   }
 
   if (!session) {

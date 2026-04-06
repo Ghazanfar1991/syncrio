@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useSession, signOut } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/providers/theme-provider"
 import { Bell, Sun, Moon, Settings, LogOut, ChevronDown, MoreVertical } from "lucide-react"
 import Link from "next/link"
@@ -16,7 +18,9 @@ export function TopRightControls({
   unreadNotificationsCount = 0,
   className = ""
 }: TopRightControlsProps) {
-  const { data: session } = useSession()
+  const { user } = useAuth()
+  const supabase = getSupabaseBrowserClient()
+  const router = useRouter()
   const { theme, toggleTheme } = useTheme()
   const isDark = theme === 'dark'
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
@@ -39,8 +43,9 @@ export function TopRightControls({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/' })
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
   }
 
   return (
@@ -69,9 +74,9 @@ export function TopRightControls({
             aria-haspopup="menu"
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-400 flex items-center justify-center text-white text-sm font-semibold">
-              {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0) || 'U'}
+              {user?.user_metadata?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
             </div>
-            <div className="text-sm hidden sm:block">{session?.user?.name || session?.user?.email?.split('@')[0] || 'User'}</div>
+            <div className="text-sm hidden sm:block">{user?.user_metadata?.name || user?.email?.split('@')[0] || 'User'}</div>
             <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
           </button>
 

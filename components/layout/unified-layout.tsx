@@ -3,7 +3,7 @@
 import { ReactNode, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
 import { useTheme } from "@/components/providers/theme-provider"
 import { AuroraLogoWithText } from "@/components/ui/aurora-logo"
 import { Sidebar } from "./sidebar"
@@ -32,7 +32,7 @@ export function UnifiedLayout({
   className = ""
 }: UnifiedLayoutProps) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { user: session } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -76,9 +76,9 @@ export function UnifiedLayout({
 
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-white/40 dark:bg-white/8 border border-black/5 dark:border-white/6">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-cyan-400 flex items-center justify-center text-white text-sm font-semibold">
-                {session?.user?.name?.charAt(0) || session?.user?.email?.charAt(0) || 'U'}
+                {session?.user_metadata?.full_name?.charAt(0) || session?.email?.charAt(0) || 'U'}
               </div>
-              <div className="text-sm">{session?.user?.name || session?.user?.email?.split('@')[0] || 'User'}</div>
+              <div className="text-sm">{session?.user_metadata?.full_name || session?.email?.split('@')[0] || 'User'}</div>
             </div>
           </div>
         </div>

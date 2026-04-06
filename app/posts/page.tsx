@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -68,7 +68,7 @@ interface GeneratedContent {
 }
 
 export default function PostsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'drafts' | 'scheduled' | 'published'>('drafts')
@@ -197,7 +197,7 @@ React.useEffect(() => {
 
 
   // Early returns after all hooks are called
-  if (status === 'loading') {
+  if (sessionLoading) {
     return (
               <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center hover:from-slate-100 hover:via-blue-100 hover:to-indigo-200 transition-all duration-200">
                   <div className="text-center hover:scale-105 transition-transform duration-200">
@@ -244,18 +244,18 @@ React.useEffect(() => {
 
   // Get user display name and username
   const getUserDisplayName = () => {
-    if (session?.user?.name) {
-      return session.user.name;
+    if (session?.user_metadata?.full_name) {
+      return session.user_metadata.full_name;
     }
-    if (session?.user?.email) {
-      return session.user.email.split('@')[0];
+    if (session?.email) {
+      return session.email.split('@')[0];
     }
     return 'User';
   };
   
   const getUserUsername = () => {
-    if (session?.user?.email) {
-      return session.user.email.split('@')[0];
+    if (session?.email) {
+      return session.email.split('@')[0];
     }
     return 'user';
   };

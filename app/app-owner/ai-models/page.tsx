@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 
 import { Sidebar } from '@/components/layout/sidebar'
@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { Zap, CheckCircle, Settings, Activity } from 'lucide-react'
 
 export default function AppOwnerModelsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
 
   // Sidebar state synced with other pages
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
@@ -172,15 +172,15 @@ export default function AppOwnerModelsPage() {
 
   React.useEffect(() => {
     // Only fetch when authenticated and authorized
-    const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
-    if (status === 'authenticated' && isAppOwner) {
+    const isAppOwner = session?.email === 'ghazanfarnaseer91@gmail.com'
+    if (!sessionLoading && session && isAppOwner) {
       fetchRegistry()
     }
-  }, [status, session?.user?.email])
+  }, [sessionLoading, session?.email])
 
   // After declaring all hooks, handle gating to keep hook order stable
-  const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
-  if (status === 'loading') return <div>Loading...</div>
+  const isAppOwner = session?.email === 'ghazanfarnaseer91@gmail.com'
+  if (sessionLoading) return <div>Loading session...</div>
   if (!session) redirect('/auth/signin')
   if (!isAppOwner) redirect('/dashboard')
 

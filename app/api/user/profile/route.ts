@@ -1,48 +1,47 @@
-// User profile API endpoint
-import { NextRequest } from 'next/server'
+// User profile API endpoint using Supabase
+import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError, formatUser } from '@/lib/api-utils'
 import { db } from '@/lib/db'
-import bcrypt from 'bcryptjs'
 import { z } from 'zod'
 
 const updateProfileSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  currentPassword: z.string().optional(),
   newPassword: z.string().min(8).optional()
 })
 
 export async function GET(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
-      const userWithDetails = await db.user.findUnique({
-        where: { id: user.id },
-        include: {
-          subscription: true,
-          socialAccounts: {
-            select: {
-              id: true,
-              platform: true,
-              accountName: true,
-              isActive: true,
-              createdAt: true
-            }
-          },
-          _count: {
-            select: {
-              posts: true,
-              chatMessages: true
-            }
-          }
-        }
-      })
+      const { data: profile, error } = await (db as any)
+        .from('users')
+        .select(`
+          *,
+          subscription:subscriptions(*),
+          social_accounts(id, platform, account_name, is_connected, is_active, created_at)
+        `)
+        .eq('id', user.id)
+        .single()
 
-      if (!userWithDetails) {
+      if (error || !profile) {
         return apiError('User not found', 404)
       }
 
-      return apiSuccess({ user: formatUser(userWithDetails) })
+      // Get post count
+      const { count: postCount } = await (db as any)
+        .from('posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+
+      const enrichedProfile = {
+        ...profile,
+        _count: {
+          posts: postCount || 0
+        }
+      }
+
+      return apiSuccess({ user: formatUser(enrichedProfile) })
     })
   )(req)
 }
@@ -53,60 +52,57 @@ export async function PUT(req: NextRequest) {
       const body = await req.json()
       
       try {
-        const { name, email, currentPassword, newPassword } = updateProfileSchema.parse(body)
+        const { name, email, newPassword } = updateProfileSchema.parse(body)
         
         const updateData: any = {}
+        const authData: any = {}
         
-        if (name) updateData.name = name
+        if (name) {
+          updateData.name = name
+          authData.user_metadata = { name, full_name: name }
+        }
         
-        if (email && email !== user.email) {
-          // Check if email is already taken
-          const existingUser = await db.user.findUnique({
-            where: { email }
-          })
-          
-          if (existingUser) {
-            return apiError('Email already in use', 400)
-          }
-          
+        if (email) {
           updateData.email = email
+          authData.email = email
         }
         
         if (newPassword) {
-          if (!currentPassword) {
-            return apiError('Current password required to change password', 400)
-          }
+          authData.password = newPassword
+        }
+
+        // Update profiles in public schema
+        if (Object.keys(updateData).length > 0) {
+          const { error: profileError } = await (db as any)
+            .from('users')
+            .update(updateData)
+            .eq('id', user.id)
           
-          // Verify current password
-          if (user.password) {
-            const isValidPassword = await bcrypt.compare(currentPassword, user.password)
-            if (!isValidPassword) {
-              return apiError('Current password is incorrect', 400)
-            }
-          }
+          if (profileError) throw profileError
+        }
+
+        // Update Supabase Auth via Admin Client
+        if (Object.keys(authData).length > 0) {
+          const { error: authError } = await (db as any).auth.admin.updateUserById(
+            user.id,
+            authData
+          )
           
-          // Hash new password
-          updateData.password = await bcrypt.hash(newPassword, 12)
+          if (authError) throw authError
         }
         
-        const updatedUser = await db.user.update({
-          where: { id: user.id },
-          data: updateData,
-          include: {
-            subscription: true,
-            socialAccounts: {
-              select: {
-                id: true,
-                platform: true,
-                accountName: true,
-                isActive: true,
-                createdAt: true
-              }
-            }
-          }
-        })
+        // Fetch updated profile
+        const { data: updatedProfile } = await (db as any)
+          .from('users')
+          .select(`
+            *,
+            subscription:subscriptions(*),
+            social_accounts(id, platform, account_name, is_connected, is_active, created_at)
+          `)
+          .eq('id', user.id)
+          .single()
         
-        return apiSuccess({ user: formatUser(updatedUser) })
+        return apiSuccess({ user: formatUser(updatedProfile) })
       } catch (error) {
         if (error instanceof z.ZodError) {
           return apiError(`Validation error: ${error.errors.map(e => e.message).join(', ')}`)

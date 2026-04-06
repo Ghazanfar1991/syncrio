@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import {
   Home,
   Rocket,
@@ -30,7 +31,8 @@ export function Sidebar(props: SidebarProps) {
   const collapsedProp = props.collapsed
   const pathname = usePathname()
   const router = useRouter()
-  const { data: session } = useSession()
+  const { user } = useAuth()
+  const supabase = getSupabaseBrowserClient()
   const STORAGE_KEY = "syncrio.sidebar.collapsed"
 
   // Determine controlled vs uncontrolled: only controlled if prop AND handler provided
@@ -97,8 +99,9 @@ export function Sidebar(props: SidebarProps) {
     return () => window.removeEventListener("storage", onStorage)
   }, [isControlled, onToggleCollapse])
 
-  const handleLogout = () => {
-    signOut({ callbackUrl: '/' })
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/')
   }
 
   const navigationItems = [
@@ -110,7 +113,7 @@ export function Sidebar(props: SidebarProps) {
     { label: 'Integrations', icon: <Share2 className="w-5 h-5"/>, route: '/integrations' },
 
     // Only show Admin tab for admin users
-    ...(session?.user?.email === 'ghazanfarnaseer91@gmail.com' ? [
+    ...(user?.email === 'ghazanfarnaseer91@gmail.com' ? [
       { label: 'Admin', icon: <Shield className="w-5 h-5"/>, route: '/app-owner' }
     ] : [])
   ]

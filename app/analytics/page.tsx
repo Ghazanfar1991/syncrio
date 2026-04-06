@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -16,7 +16,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 
 export default function AnalyticsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading } = useAuth()
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
   if (typeof window === "undefined") return false;
   try {
@@ -71,7 +71,7 @@ React.useEffect(() => {
     setPeriod('custom')
   }
 
-  if (status === 'loading') {
+  if (loading) {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-all duration-200">
 

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useSession, signOut } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { Button } from '@/components/ui/button'
 import { Home, Settings, BarChart3, MessageSquare, Sparkles, LogOut, User, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
@@ -17,7 +17,7 @@ const navigationItems = [
 
 export function Navigation() {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { user: session, signOut } = useAuth()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
 
   return (
@@ -70,7 +70,7 @@ export function Navigation() {
                     <User className="h-4 w-4 text-white" />
                   </div>
                   <span className="hidden md:inline max-w-32 truncate">
-                    {session.user?.name || session.user?.email?.split('@')[0]}
+                    {session?.user_metadata?.full_name || session?.email?.split('@')[0]}
                   </span>
                   <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -80,10 +80,10 @@ export function Navigation() {
                   <div className="absolute right-0 mt-2 w-48 glass rounded-xl shadow-modern-lg border border-border/50 py-2 animate-scale-in">
                     <div className="px-4 py-2 border-b border-border/50">
                       <p className="text-sm font-medium text-foreground">
-                        {session.user?.name || 'User'}
+                        {session?.user_metadata?.full_name || 'User'}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {session.user?.email}
+                        {session?.email}
                       </p>
                     </div>
 

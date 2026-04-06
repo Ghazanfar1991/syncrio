@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -217,7 +217,7 @@ function appendHashtagsToContent(content: string, tags: string[]): string {
 }
 
 export default function CreatePage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading } = useAuth()
   const { toast } = useToast()
 
   // New state management for the redesigned flow
@@ -367,7 +367,7 @@ React.useEffect(() => {
 
 
   // Early returns after all hooks are called
-  if (status === 'loading') {
+  if (loading) {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-all duration-200">
         {/* Sidebar */}

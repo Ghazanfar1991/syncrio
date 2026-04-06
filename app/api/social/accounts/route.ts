@@ -1,120 +1,260 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { createClient } from '@/lib/supabase/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { bundleSocial, SUPPORTED_PLATFORMS } from '@/lib/bundle-social'
+
+async function getAuthUser() {
+  const supabase = await createClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return null
+  return user
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accounts = await db.socialAccount.findMany({
-      where: {
-        userId: session.user.id
-      },
-      orderBy: [
-        { platform: 'asc' },
-        { createdAt: 'desc' }
-      ]
-    })
+    const { data: accounts, error } = await supabaseAdmin
+      .from('social_accounts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('platform', { ascending: true })
+      .order('created_at', { ascending: false })
 
-    return NextResponse.json({
-      success: true,
-      data: accounts
-    })
+    if (error) throw error
+
+    return NextResponse.json({ success: true, data: accounts || [] })
   } catch (error) {
     console.error('Failed to fetch social accounts:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch social accounts' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Failed to fetch social accounts' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const { platform, accountId, accountName, displayName, username, accessToken, refreshToken, expiresAt, accountType, permissions } = body
+    const { action } = body
 
-    if (!platform || !accountId || !accountName || !accessToken) {
+    // --- HELPER ---
+    async function getOrCreateBundleTeam(userId: string) {
+      let { data: team } = await (supabaseAdmin as any)
+        .from('teams')
+        .select('*')
+        .eq('owner_id', userId)
+        .single()
+
+      if (!team) {
+        const { data: newTeam, error } = await (supabaseAdmin as any)
+          .from('teams')
+          .insert({ owner_id: userId, name: 'Personal Workspace' })
+          .select()
+          .single()
+
+        if (error) throw new Error(`Failed to insert local team: ${error.message}`)
+        team = newTeam
+      }
+
+      if (!team.bundle_social_team_id) {
+        const res = await fetch('https://api.bundle.social/api/v1/team', {
+          method: 'POST',
+          headers: {
+            'x-api-key': process.env.BUNDLE_SOCIAL_API_KEY!,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ name: `Workspace for ${userId}` })
+        })
+
+        if (!res.ok) {
+          throw new Error(`Failed to provision Bundle.social team: ${await res.text()}`)
+        }
+
+        const remoteTeam = await res.json()
+
+        await (supabaseAdmin as any)
+          .from('teams')
+          .update({ bundle_social_team_id: remoteTeam.id })
+          .eq('id', team.id)
+
+        return remoteTeam.id
+      }
+
+      return team.bundle_social_team_id
+    }
+
+    // ================================
+    // ACTION: CREATE PORTAL LINK
+    // ================================
+    if (action === 'connect') {
+      const { platform } = body
+
+      const teamId = await getOrCreateBundleTeam(user.id)
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL!
+
+      // 👇 THIS IS CRITICAL
+      const redirectUrl = `${appUrl}/integrations?sync=true`
+
+      const res = await fetch(
+        'https://api.bundle.social/api/v1/social-account/create-portal-link',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.BUNDLE_SOCIAL_API_KEY!
+          },
+          body: JSON.stringify({
+            teamId,
+            redirectUrl,
+
+            // 👇 THIS FIXES "showing all platforms again"
+            socialAccountTypes: platform ? [platform] : [
+              'INSTAGRAM',
+              'FACEBOOK',
+              'TWITTER',
+              'LINKEDIN'
+            ]
+          })
+        }
+      )
+
+      if (!res.ok) {
+        const err = await res.text()
+        console.error('Bundle error:', err)
+        throw new Error('Failed to create portal link')
+      }
+
+      const data = await res.json()
+
+      return NextResponse.json({
+        success: true,
+        url: data.url
+      })
+    }
+
+    // ================================
+    // ACTION: SYNC
+    // ================================
+    if (action === 'sync') {
+      const teamId = await getOrCreateBundleTeam(user.id)
+      const bundleTeam = await bundleSocial.team.teamGetTeam(teamId)
+
+      const accounts = (bundleTeam as any).socialAccounts || []
+
+      for (const acc of accounts) {
+        await (supabaseAdmin as any).from('social_accounts').upsert({
+          user_id: user.id,
+          platform: acc.type,
+          account_id: acc.platformId,
+          account_name: acc.name,
+          display_name: acc.name,
+          username: acc.username,
+          access_token: 'managed_by_bundle',
+          is_connected: true,
+          is_active: true,
+          bundle_social_account_id: acc.id,
+          metadata: {
+            requires_channel_selection: acc.isRequireSetChannel,
+            available_channels: acc.channels || []
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,platform,account_id'
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Synced ${accounts.length} accounts`
+      })
+    }
+
+    // ================================
+    // ACTION: SET CHANNEL
+    // ================================
+    if (action === 'set-channel') {
+      const { platform, channelId } = body
+      const teamId = await getOrCreateBundleTeam(user.id)
+
+      await (bundleSocial.socialAccount as any).socialAccountSetChannel({
+        teamId,
+        type: platform,
+        channelId
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: 'Channel selected successfully'
+      })
+    }
+
+    // ================================
+    // DEFAULT: MANUAL SAVE
+    // ================================
+    const {
+      platform,
+      account_id,
+      account_name,
+      display_name,
+      username,
+      access_token,
+      refresh_token,
+      expires_at,
+      account_type,
+      permissions,
+      bundle_social_account_id
+    } = body
+
+    if (!platform || !account_id || !account_name || !access_token) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
       )
     }
 
-    // Check if account already exists for this user and platform
-    const existingAccount = await db.socialAccount.findFirst({
-      where: {
-        userId: session.user.id,
+    const { data, error } = await supabaseAdmin
+      .from('social_accounts')
+      .upsert({
+        user_id: user.id,
         platform,
-        accountId
-      }
+        account_id,
+        account_name,
+        display_name,
+        username,
+        access_token,
+        refresh_token,
+        expires_at: expires_at ? new Date(expires_at).toISOString() : null,
+        account_type: account_type || 'PERSONAL',
+        permissions: permissions || [],
+        is_connected: true,
+        is_active: true,
+        bundle_social_account_id: bundle_social_account_id || null,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,platform,account_id'
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return NextResponse.json({
+      success: true,
+      data,
+      message: 'Account saved successfully'
     })
 
-    if (existingAccount) {
-      // Update existing account
-      const updatedAccount = await db.socialAccount.update({
-        where: { id: existingAccount.id },
-        data: {
-          accountName,
-          displayName,
-          username,
-          accessToken,
-          refreshToken,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-          accountType: accountType || 'PERSONAL',
-          permissions: permissions || [],
-          isConnected: true,
-          isActive: true,
-          updatedAt: new Date()
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        data: updatedAccount,
-        message: 'Account updated successfully'
-      })
-    } else {
-      // Create new account
-      const newAccount = await db.socialAccount.create({
-        data: {
-          userId: session.user.id,
-          platform,
-          accountId,
-          accountName,
-          displayName,
-          username,
-          accessToken,
-          refreshToken,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-          accountType: accountType || 'PERSONAL',
-          permissions: permissions || [],
-          isConnected: true,
-          isActive: true
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        data: newAccount,
-        message: 'Account created successfully'
-      })
-    }
-  } catch (error) {
-    console.error('Failed to create/update social account:', error)
+  } catch (error: any) {
+    console.error('POST error:', error)
     return NextResponse.json(
-      { success: false, error: 'Failed to create/update social account' },
+      { success: false, error: 'Failed to process request' },
       { status: 500 }
     )
   }
@@ -122,9 +262,8 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -132,55 +271,40 @@ export async function PUT(request: NextRequest) {
     const { id, ...updateData } = body
 
     if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Account ID is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Account ID required' }, { status: 400 })
     }
 
-    // Verify the account belongs to the user
-    const existingAccount = await db.socialAccount.findFirst({
-      where: {
-        id,
-        userId: session.user.id
-      }
-    })
+    const { data: existing } = await supabaseAdmin
+      .from('social_accounts')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
 
-    if (!existingAccount) {
-      return NextResponse.json(
-        { success: false, error: 'Account not found' },
-        { status: 404 }
-      )
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 })
     }
 
-    // Update the account
-    const updatedAccount = await db.socialAccount.update({
-      where: { id },
-      data: {
-        ...updateData,
-        updatedAt: new Date()
-      }
-    })
+    const { data, error } = await supabaseAdmin
+      .from('social_accounts')
+      .update({ ...updateData, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
 
-    return NextResponse.json({
-      success: true,
-      data: updatedAccount,
-      message: 'Account updated successfully'
-    })
+    if (error) throw error
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
-    console.error('Failed to update social account:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to update social account' },
-      { status: 500 }
-    )
+    console.error('Failed to update:', error)
+    return NextResponse.json({ success: false, error: 'Update failed' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user?.id) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -188,41 +312,25 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id')
 
     if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Account ID is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Account ID required' }, { status: 400 })
     }
 
-    // Verify the account belongs to the user
-    const existingAccount = await db.socialAccount.findFirst({
-      where: {
-        id,
-        userId: session.user.id
-      }
-    })
+    const { data: existing } = await supabaseAdmin
+      .from('social_accounts')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
 
-    if (!existingAccount) {
-      return NextResponse.json(
-        { success: false, error: 'Account not found' },
-        { status: 404 }
-      )
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 })
     }
 
-    // Delete the account
-    await db.socialAccount.delete({
-      where: { id }
-    })
+    await supabaseAdmin.from('social_accounts').delete().eq('id', id)
 
-    return NextResponse.json({
-      success: true,
-      message: 'Account deleted successfully'
-    })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Failed to delete social account:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete social account' },
-      { status: 500 }
-    )
+    console.error('Delete failed:', error)
+    return NextResponse.json({ success: false, error: 'Delete failed' }, { status: 500 })
   }
 }

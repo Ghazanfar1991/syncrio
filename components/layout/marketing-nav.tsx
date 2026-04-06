@@ -1,14 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Sparkles } from "lucide-react"
 import { useTheme } from "@/components/providers/theme-provider"
 import { LogoMark } from "@/components/layout/logo-mark"
 
 export function MarketingNav() {
-  const { data: session } = useSession()
+  const { user: session } = useAuth()
   const { theme, setTheme } = useTheme()
 
   return (

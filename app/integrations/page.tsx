@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
-import { redirect } from 'next/navigation'
+import { useAuth } from "@/components/providers/auth-provider"
+import { useRouter, useSearchParams } from 'next/navigation'
 import { TopRightControls } from '@/components/layout/top-right-controls'
 import { Sidebar } from '@/components/layout/sidebar'
+import { SUPPORTED_PLATFORMS } from '@/lib/bundle-social'
+import { ChannelSelector } from '@/components/social/ChannelSelector'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,12 +21,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { 
-  Share2, 
-  Plus, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
+import {
+  Share2,
+  Plus,
+  CheckCircle,
+  XCircle,
+  Clock,
   Twitter,
   Linkedin,
   Instagram,
@@ -39,7 +41,16 @@ import {
   LayoutGrid,
   ShieldCheck,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  Music2,
+  AtSign,
+  Pin,
+  MessagesSquare,
+  Network,
+  Cloud,
+  Slack,
+  Globe,
+  MessageSquare
 } from 'lucide-react'
 
 interface SocialAccount {
@@ -52,18 +63,22 @@ interface SocialAccount {
   lastSync?: string
   accountType: 'personal' | 'business' | 'creator'
   permissions: string[]
+  metadata?: {
+    requires_channel_selection?: boolean
+    available_channels?: Array<{ id: string; name: string }>
+  }
 }
 
-type Platform = "TWITTER" | "LINKEDIN" | "INSTAGRAM" | "YOUTUBE" | "FACEBOOK" | "TELEGRAM";
+type Platform = typeof SUPPORTED_PLATFORMS[number]['id'];
 
 // Custom X Logo Component
 const XLogo = ({ className }: { className?: string }) => (
-  <svg 
-    viewBox="0 0 24 24" 
-    className={className} 
+  <svg
+    viewBox="0 0 24 24"
+    className={className}
     fill="currentColor"
   >
-    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
   </svg>
 );
 
@@ -73,46 +88,94 @@ const PLATFORM_META: Record<Platform, {
   gradient: string;
   displayName: string;
 }> = {
-  TWITTER: { 
-    icon: XLogo, 
-    brand: "text-neutral-900 dark:text-neutral-100", 
+  TWITTER: {
+    icon: XLogo,
+    brand: "text-neutral-900 dark:text-neutral-100",
     gradient: "from-neutral-800 to-neutral-900",
     displayName: "X"
   },
-  LINKEDIN: { 
-    icon: Linkedin, 
-    brand: "text-sky-700", 
+  LINKEDIN: {
+    icon: Linkedin,
+    brand: "text-sky-700",
     gradient: "from-sky-600 to-sky-800",
     displayName: "LinkedIn"
   },
-  INSTAGRAM: { 
-    icon: Instagram, 
-    brand: "text-pink-500", 
+  INSTAGRAM: {
+    icon: Instagram,
+    brand: "text-pink-500",
     gradient: "from-pink-500 to-purple-600",
     displayName: "Instagram"
   },
-  YOUTUBE: { 
-    icon: Youtube, 
-    brand: "text-red-600", 
+  YOUTUBE: {
+    icon: Youtube,
+    brand: "text-red-600",
     gradient: "from-red-500 to-rose-600",
     displayName: "YouTube"
   },
-  FACEBOOK: { 
-    icon: Facebook, 
-    brand: "text-blue-600", 
+  FACEBOOK: {
+    icon: Facebook,
+    brand: "text-blue-600",
     gradient: "from-blue-500 to-blue-700",
     displayName: "Facebook"
   },
-  TELEGRAM: { 
-    icon: MessageCircle, 
-    brand: "text-blue-400", 
+  TIKTOK: {
+    icon: Music2,
+    brand: "text-neutral-900",
+    gradient: "from-neutral-800 to-neutral-900",
+    displayName: "TikTok"
+  },
+  THREADS: {
+    icon: AtSign,
+    brand: "text-neutral-900",
+    gradient: "from-neutral-700 to-neutral-900",
+    displayName: "Threads"
+  },
+  PINTEREST: {
+    icon: Pin,
+    brand: "text-red-600",
+    gradient: "from-red-600 to-red-800",
+    displayName: "Pinterest"
+  },
+  REDDIT: {
+    icon: MessagesSquare,
+    brand: "text-orange-600",
+    gradient: "from-orange-500 to-orange-700",
+    displayName: "Reddit"
+  },
+  MASTODON: {
+    icon: Network,
+    brand: "text-indigo-600",
+    gradient: "from-indigo-500 to-indigo-700",
+    displayName: "Mastodon"
+  },
+  BLUESKY: {
+    icon: Cloud,
+    brand: "text-blue-500",
     gradient: "from-blue-400 to-blue-600",
-    displayName: "Telegram"
-  }
+    displayName: "Bluesky"
+  },
+  DISCORD: {
+    icon: MessageSquare,
+    brand: "text-indigo-500",
+    gradient: "from-indigo-400 to-indigo-600",
+    displayName: "Discord"
+  },
+  SLACK: {
+    icon: Slack,
+    brand: "text-purple-600",
+    gradient: "from-purple-500 to-purple-700",
+    displayName: "Slack"
+  },
+  GOOGLE_BUSINESS: {
+    icon: Globe,
+    brand: "text-blue-500",
+    gradient: "from-blue-500 to-emerald-500",
+    displayName: "Google Business"
+  },
 };
 
 export default function IntegrationsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
@@ -121,17 +184,17 @@ export default function IntegrationsPage() {
   const [connectModalOpen, setConnectModalOpen] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(null)
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
-  if (typeof window === "undefined") return false;
-  try {
-    return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
-  } catch {
-    return false;
-  }
-});
+    if (typeof window === "undefined") return false;
+    try {
+      return JSON.parse(localStorage.getItem("sidebar:collapsed") ?? "false");
+    } catch {
+      return false;
+    }
+  });
 
-React.useEffect(() => {
-  localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
-}, [collapsed]);
+  React.useEffect(() => {
+    localStorage.setItem("sidebar:collapsed", JSON.stringify(collapsed));
+  }, [collapsed]);
   // Facebook Pages selection state
   const [fbPages, setFbPages] = useState<Array<{ id: string; name: string }>>([])
   const [fbPageModalOpen, setFbPageModalOpen] = useState(false)
@@ -139,6 +202,10 @@ React.useEffect(() => {
   const [fbPageLoading, setFbPageLoading] = useState(false)
   const [fbPageError, setFbPageError] = useState<string | null>(null)
   const [fbPendingConnect, setFbPendingConnect] = useState(false)
+
+  // Channel selector state
+  const [channelModalOpen, setChannelModalOpen] = useState(false)
+  const [activeChannelAccount, setActiveChannelAccount] = useState<SocialAccount | null>(null)
 
   // Helper functions for success/error messages
   const getSuccessMessage = (success: string) => {
@@ -168,6 +235,9 @@ React.useEffect(() => {
     return messages[error] || 'An error occurred. Please try again.'
   }
 
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
   useEffect(() => {
     if (session) {
       fetchSocialAccounts()
@@ -175,115 +245,93 @@ React.useEffect(() => {
   }, [session])
 
   useEffect(() => {
-    // Check for success/error messages in URL parameters
-    const urlParams = new URLSearchParams(window.location.search)
-    const success = urlParams.get('success')
-    const error = urlParams.get('error')
-    const errorDetail = urlParams.get('error_detail')
-    
-    if (success) {
-      setMessage({ type: 'success', text: getSuccessMessage(success) })
-      if (success === 'facebook_connected') {
-        if (session?.user?.id) {
-          ;(async () => {
-            try {
-              const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
-              const pagesJson = await pagesRes.json()
-              if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
-                const pages = pagesJson.data.pages
-                if (pages.length === 1) {
-                  await fetch('/api/social/facebook/select-page', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      userId: session.user.id,
-                      pageId: pages[0].id,
-                      pageName: pages[0].name,
-                    }),
-                  })
-                } else if (pages.length > 1) {
-                  setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
-                  setFbSelectedPageId(pages[0].id)
-                  setFbPageModalOpen(true)
-                }
-              }
-            } catch (e) {
-              console.warn('Auto-select Facebook page skipped:', e)
-            } finally {
-              // Clear URL and refresh accounts after handling
-              window.history.replaceState({}, document.title, window.location.pathname)
-              fetchSocialAccounts()
-            }
-          })()
-        } else {
-          // Session not ready yet; mark pending and process when session loads
-          try { sessionStorage.setItem('fbPendingConnect', '1') } catch {}
-          setFbPendingConnect(true)
-        }
-      } else {
-        // Clear URL parameter for other success cases
-        window.history.replaceState({}, document.title, window.location.pathname)
+    // Check for sync request from Portal Link redirect
+    const sync = searchParams.get('sync')
+    if (sync === 'true' && session) {
+      handleSyncAccounts()
+    }
+  }, [searchParams, session])
+
+  useEffect(() => {
+    if (!session) return
+
+    const sync = searchParams.get('sync')
+    if (sync !== 'true') return
+
+    const timer = setTimeout(() => {
+      handleSyncAccounts()
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [searchParams, session])
+
+  const handleSyncAccounts = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/social/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync' })
+      })
+      const data = await res.json()
+      if (data.success) {
+        setMessage({ type: 'success', text: data.message })
         fetchSocialAccounts()
       }
-    } else if (error) {
-      let text = getErrorMessage(error)
-      if (errorDetail) {
-        try {
-          const decoded = atob(errorDetail)
-          if (decoded) text += ` — ${decoded}`
-        } catch {}
-      }
-      setMessage({ type: 'error', text })
-      // Clear URL parameter
-      window.history.replaceState({}, document.title, window.location.pathname)
+      // Clear URL
+      router.replace('/integrations')
+    } catch (e) {
+      console.error('Sync failed:', e)
+    } finally {
+      setLoading(false)
     }
-  }, [session?.user?.id])
+  }
 
   // Handle pending Facebook connect once session is available
   useEffect(() => {
     const pending = (() => {
       try { return sessionStorage.getItem('fbPendingConnect') === '1' } catch { return fbPendingConnect }
     })()
-    if (!pending || !session?.user?.id) return
-    ;(async () => {
-      try {
-        const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
-        const pagesJson = await pagesRes.json()
-        if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
-          const pages = pagesJson.data.pages
-          if (pages.length === 1) {
-            await fetch('/api/social/facebook/select-page', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: session.user.id,
-                pageId: pages[0].id,
-                pageName: pages[0].name,
-              }),
-            })
-          } else if (pages.length > 1) {
-            setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
-            setFbSelectedPageId(pages[0].id)
-            setFbPageModalOpen(true)
+    if (!pending || !session?.id) return
+      ; (async () => {
+        try {
+          const pagesRes = await fetch(`/api/social/facebook/pages?userId=${session.id}`)
+          const pagesJson = await pagesRes.json()
+          if (pagesJson?.success && Array.isArray(pagesJson.data?.pages)) {
+            const pages = pagesJson.data.pages
+            if (pages.length === 1) {
+              await fetch('/api/social/facebook/select-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  userId: session.id,
+                  pageId: pages[0].id,
+                  pageName: pages[0].name,
+                }),
+              })
+            } else if (pages.length > 1) {
+              setFbPages(pages.map((p: any) => ({ id: p.id, name: p.name })))
+              setFbSelectedPageId(pages[0].id)
+              setFbPageModalOpen(true)
+            }
           }
+        } catch (e) {
+          console.warn('Pending Facebook page selection skipped:', e)
+        } finally {
+          try { sessionStorage.removeItem('fbPendingConnect') } catch { }
+          setFbPendingConnect(false)
+          window.history.replaceState({}, document.title, window.location.pathname)
+          fetchSocialAccounts()
         }
-      } catch (e) {
-        console.warn('Pending Facebook page selection skipped:', e)
-      } finally {
-        try { sessionStorage.removeItem('fbPendingConnect') } catch {}
-        setFbPendingConnect(false)
-        window.history.replaceState({}, document.title, window.location.pathname)
-        fetchSocialAccounts()
-      }
-    })()
-  }, [fbPendingConnect, session?.user?.id])
+      })()
+  }, [fbPendingConnect, session?.id])
 
   const fetchSocialAccounts = async () => {
     try {
       setLoading(true)
       const response = await fetch('/api/social/accounts')
       const result = await response.json()
-      
+
       if (result.success) {
         // Transform the data to match our interface
         const transformedAccounts: SocialAccount[] = result.data.map((acc: any) => ({
@@ -295,7 +343,8 @@ React.useEffect(() => {
           isConnected: acc.isConnected,
           lastSync: acc.lastSync ? formatLastSync(acc.lastSync) : undefined,
           accountType: acc.accountType?.toLowerCase() || 'personal',
-          permissions: Array.isArray(acc.permissions) ? acc.permissions : []
+          permissions: Array.isArray(acc.permissions) ? acc.permissions : [],
+          metadata: acc.metadata || {}
         }))
         setAccounts(transformedAccounts)
       } else {
@@ -309,14 +358,14 @@ React.useEffect(() => {
   }
 
   const handleOpenFacebookPageSelector = async () => {
-    if (!session?.user?.id) {
+    if (!session?.id) {
       setMessage({ type: 'error', text: getErrorMessage('unauthorized') })
       return
     }
     setFbPageError(null)
     setFbPageLoading(true)
     try {
-      const res = await fetch(`/api/social/facebook/pages?userId=${session.user.id}`)
+      const res = await fetch(`/api/social/facebook/pages?userId=${session.id}`)
       const json = await res.json()
       if (!res.ok || !json?.success) {
         throw new Error(json?.error?.message || 'Failed to load Facebook pages')
@@ -337,7 +386,7 @@ React.useEffect(() => {
   }
 
   const handleConfirmFacebookPage = async () => {
-    if (!session?.user?.id || !fbSelectedPageId) return
+    if (!session?.id || !fbSelectedPageId) return
     setFbPageLoading(true)
     setFbPageError(null)
     try {
@@ -346,7 +395,7 @@ React.useEffect(() => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: session.user.id,
+          userId: session.id,
           pageId: fbSelectedPageId,
           pageName: selected?.name,
         }),
@@ -369,7 +418,7 @@ React.useEffect(() => {
     const date = new Date(dateString)
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-    
+
     if (diffInHours < 1) return 'Just now'
     if (diffInHours < 24) return `${diffInHours} hours ago`
     if (diffInHours < 48) return '1 day ago'
@@ -389,72 +438,42 @@ React.useEffect(() => {
 
   const handleConnectAccount = async (platform: string) => {
     try {
-      const platformLower = platform.toLowerCase()
-      let response: Response
-      
-      console.log(`Attempting to connect ${platform}...`)
-      
-      // Use the existing OAuth connect endpoints that were working
-      switch (platformLower) {
-        case 'twitter':
-          response = await fetch('/api/social/twitter/connect', { method: 'POST' })
-          break
-        case 'linkedin':
-          response = await fetch('/api/social/linkedin/connect', { method: 'POST' })
-          break
-        case 'instagram':
-          response = await fetch('/api/social/instagram/connect', { method: 'POST' })
-          break
-        case 'youtube':
-          response = await fetch('/api/social/youtube/connect', { method: 'POST' })
-          break
-        case 'facebook':
-          if (!session?.user?.id) {
-            setMessage({ type: 'error', text: getErrorMessage('unauthorized') })
-            return
-          }
-          response = await fetch('/api/social/facebook/connect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: session.user.id })
-          })
-          break
-        default:
-          console.error('Unsupported platform:', platform)
-          return
-      }
-      
-      console.log(`${platform} response status:`, response.status)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`${platform} error response:`, errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
-      }
-      
+      setLoading(true)
+
+      const response = await fetch('/api/social/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'connect',
+          platform // 👈 IMPORTANT
+        })
+      })
+
       const data = await response.json()
-      console.log(`${platform} response data:`, data)
-      
-      if (data.success && data.data.authUrl) {
-        console.log(`Redirecting to ${platform} OAuth URL:`, data.data.authUrl)
-        // Redirect to the OAuth authorization URL
-        window.location.href = data.data.authUrl
+
+      if (data.success && data.url) {
+        window.location.href = data.url
       } else {
-        throw new Error(data.error?.message || `Failed to get ${platform} OAuth URL`)
+        throw new Error(data.error || 'Failed to get portal link')
       }
+
     } catch (error) {
-      console.error(`Failed to connect ${platform}:`, error)
-      setMessage({ type: 'error', text: `Failed to connect ${platform}: ${error instanceof Error ? error.message : 'Unknown error'}` })
+      console.error(`Failed to connect:`, error)
+      setMessage({
+        type: 'error',
+        text: `Failed to open connection portal`
+      })
+    } finally {
+      setLoading(false)
     }
   }
-
   const handleDisconnectAccount = async (accountId: string) => {
     try {
       const response = await fetch(`/api/social/accounts?id=${accountId}`, {
         method: 'DELETE'
       })
       const result = await response.json()
-      
+
       if (result.success) {
         setAccounts(prev => prev.filter(acc => acc.id !== accountId))
       } else {
@@ -478,7 +497,7 @@ React.useEffect(() => {
         })
       })
       const result = await response.json()
-      
+
       if (result.success) {
         // Refresh the accounts list
         fetchSocialAccounts()
@@ -491,7 +510,7 @@ React.useEffect(() => {
   }
 
   const toggleActive = (accountId: string) => {
-    setAccounts(prev => prev.map(acc => 
+    setAccounts(prev => prev.map(acc =>
       acc.id === accountId ? { ...acc, isActive: !acc.isActive } : acc
     ))
   }
@@ -506,7 +525,7 @@ React.useEffect(() => {
     handleConnectAccount(platform)
   }
 
-  if (status === 'loading') {
+  if (sessionLoading) {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
 
@@ -524,14 +543,15 @@ React.useEffect(() => {
     )
   }
 
-  if (!session) {
-    redirect('/auth/signin')
+  if (!session && !sessionLoading) {
+    router.push('/auth/signin')
+    return null
   }
 
   return (
     <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Sidebar */}
-      <Sidebar 
+      <Sidebar
         collapsed={collapsed}
         onToggleCollapse={setCollapsed}
         showPlanInfo={true}
@@ -555,11 +575,10 @@ React.useEffect(() => {
 
           {/* Success/Error Messages */}
           {message && (
-            <div className={`p-3 sm:p-4 rounded-2xl border border-black/10 dark:border-white/10 ${
-              message.type === 'success' 
-                ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800' 
-                : 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-200 border-red-200 dark:border-red-800'
-            }`}>
+            <div className={`p-3 sm:p-4 rounded-2xl border border-black/10 dark:border-white/10 ${message.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800'
+              : 'bg-red-50 text-red-800 dark:bg-red-900/20 dark:text-red-200 border-red-200 dark:border-red-800'
+              }`}>
               <div className="flex items-center justify-between">
                 <span className="text-sm sm:text-base">{message.text}</span>
                 <button
@@ -578,11 +597,11 @@ React.useEffect(() => {
               <KPICard label="Total Accounts" value={total} />
               <KPICard label="Active" value={active} />
               <KPICard label="Platforms" value={connectedPlatforms} />
-              <Button 
-                onClick={openConnectModal} 
+              <Button
+                onClick={openConnectModal}
                 className="rounded-3xl h-24 sm:h-20 sm:h-24 bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:from-rose-600 hover:to-pink-600 transition-all duration-300 text-sm sm:text-base lg:text-lg font-medium shadow-sm hover:shadow-lg transform hover:scale-[1.02] col-span-2 sm:col-span-1"
               >
-                <Plus className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 mr-2"/> 
+                <Plus className="h-5 w-5 sm:h-6 sm:w-6 lg:h-8 lg:w-8 mr-2" />
                 <span className="hidden sm:inline">Connect Account</span>
                 <span className="sm:hidden">Connect</span>
               </Button>
@@ -602,7 +621,7 @@ React.useEffect(() => {
                           placeholder="Search name or handle"
                           className="pl-8 sm:pl-9 w-full sm:w-56 rounded-xl text-sm"
                         />
-                        <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-neutral-400"/>
+                        <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                       </div>
                       <select
                         value={platformFilter}
@@ -636,7 +655,7 @@ React.useEffect(() => {
                               </Badge>
                               <Switch checked={acc.isActive && acc.isConnected} onCheckedChange={() => toggleActive(acc.id)} />
                               <Button variant="ghost" size="icon" onClick={() => handleDisconnectAccount(acc.id)} className="hover:text-red-600 h-8 w-8 sm:h-9 sm:w-9">
-                                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4"/>
+                                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                               </Button>
                             </div>
                           </div>
@@ -699,6 +718,23 @@ React.useEffect(() => {
           </div>
         </main>
       </div>
+
+      {/* Channel Selection Modal */}
+      {activeChannelAccount && (
+        <ChannelSelector
+          isOpen={channelModalOpen}
+          onClose={() => {
+            setChannelModalOpen(false)
+            setActiveChannelAccount(null)
+          }}
+          platform={activeChannelAccount.platform}
+          channels={activeChannelAccount.metadata?.available_channels || []}
+          onSuccess={() => {
+            setMessage({ type: 'success', text: 'Channel selected successfully!' })
+            fetchSocialAccounts()
+          }}
+        />
+      )}
 
       {/* Connect Platform Modal */}
       <Dialog open={connectModalOpen} onOpenChange={setConnectModalOpen}>
@@ -800,9 +836,9 @@ function BrandChip({ platform }: { platform: Platform }) {
   const meta = PLATFORM_META[platform];
   const Icon = meta.icon;
   return (
-    <span className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-xl border border-black/10 dark:border-white/10 px-2 sm:px-3 py-1.5 sm:py-2 bg-white/60 dark:bg-neutral-900/60`}> 
+    <span className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-xl border border-black/10 dark:border-white/10 px-2 sm:px-3 py-1.5 sm:py-2 bg-white/60 dark:bg-neutral-900/60`}>
       <span className={`h-5 w-5 sm:h-6 sm:w-6 grid place-items-center rounded-lg text-white bg-gradient-to-br ${meta.gradient}`}>
-        <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5"/>
+        <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
       </span>
       <span className="text-xs font-medium">{meta.displayName}</span>
     </span>
@@ -838,7 +874,7 @@ function PlatformCard({
             <p className="text-xs -mt-1 text-white/90">{accounts.length} account{accounts.length !== 1 && "s"} connected</p>
           </div>
           <Button onClick={onConnect} className="rounded-xl text-white text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
-            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1"/> 
+            <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1" />
             <span className="hidden sm:inline">Connect</span>
             <span className="sm:hidden">+</span>
           </Button>
@@ -852,7 +888,7 @@ function PlatformCard({
             {accounts.slice(0, 3).map((acc) => (
               <li key={acc.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-neutral-900/50 shadow-sm">
                 <div className={`h-6 w-6 sm:h-8 sm:w-8 rounded-xl grid place-items-center text-white bg-gradient-to-br ${meta.gradient}`}>
-                  <Icon className="h-3 w-3 sm:h-4 sm:w-4"/>
+                  <Icon className="h-3 w-3 sm:h-4 sm:w-4" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs sm:text-sm font-medium">{acc.displayName}</p>
@@ -863,7 +899,7 @@ function PlatformCard({
                 </Badge>
                 <Switch checked={acc.isActive && acc.isConnected} onCheckedChange={() => onToggle(acc.id)} />
                 <Button variant="ghost" size="icon" onClick={() => onRemove(acc.id)} className="hover:text-red-600 h-7 w-7 sm:h-8 sm:w-8">
-                  <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5"/>
+                  <Trash2 className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </Button>
               </li>
             ))}

@@ -1,27 +1,24 @@
-// Real social media analytics fetching service
+// Real social media analytics fetching service using Supabase
 import { db } from '@/lib/db'
 import { getValidLinkedInToken } from '@/lib/social/linkedin'
 import { getValidInstagramToken } from '@/lib/social/instagram'
 import { getValidYouTubeToken } from '@/lib/social/youtube'
 
-// Helper function to get valid Twitter token
+// Helper function to get valid Twitter token using Supabase
 async function getValidTwitterToken(userId: string, accountId: string): Promise<string | null> {
-  const account = await db.socialAccount.findUnique({
-    where: {
-      userId_platform_accountId: {
-        userId,
-        platform: 'TWITTER',
-        accountId
-      }
-    },
-    select: { accessToken: true, isActive: true }
-  })
+  const { data: account, error } = await (db as any)
+    .from('social_accounts')
+    .select('access_token, is_active')
+    .eq('user_id', userId)
+    .eq('platform', 'TWITTER')
+    .eq('account_id', accountId)
+    .maybeSingle()
 
-  if (!account || !account.isActive || !account.accessToken) {
+  if (error || !account || !account.is_active || !account.access_token) {
     return null
   }
 
-  return account.accessToken
+  return account.access_token
 }
 
 interface AnalyticsData {
@@ -45,7 +42,6 @@ export async function fetchTwitterAnalytics(userId: string, accountId: string, t
     const token = await getValidTwitterToken(userId, accountId)
     if (!token) return null
 
-    // Twitter API v2 Tweet metrics
     const response = await fetch(
       `https://api.twitter.com/2/tweets/${tweetId}?tweet.fields=public_metrics,non_public_metrics,organic_metrics`,
       {
@@ -68,19 +64,19 @@ export async function fetchTwitterAnalytics(userId: string, accountId: string, t
     const impressions = organicMetrics.impression_count || metrics.impression_count || 0
     const likes = metrics.like_count || 0
     const comments = metrics.reply_count || 0
-    const shares = metrics.retweet_count + metrics.quote_count || 0
+    const shares = (metrics.retweet_count || 0) + (metrics.quote_count || 0)
     const clicks = organicMetrics.url_link_clicks || 0
 
     return {
       platform: 'TWITTER',
-      postId: '', // Will be set by caller
+      postId: '',
       externalId: tweetId,
       impressions,
       likes,
       comments,
       shares,
       clicks,
-      reach: impressions, // Twitter doesn't separate reach from impressions
+      reach: impressions,
       engagementRate: impressions > 0 ? ((likes + comments + shares) / impressions) * 100 : 0,
       fetchedAt: new Date()
     }
@@ -96,7 +92,6 @@ export async function fetchLinkedInAnalytics(userId: string, accountId: string, 
     const token = await getValidLinkedInToken(userId, accountId)
     if (!token) return null
 
-    // LinkedIn API for post statistics
     const response = await fetch(
       `https://api.linkedin.com/v2/socialActions/${postId}`,
       {
@@ -143,7 +138,6 @@ export async function fetchInstagramAnalytics(userId: string, accountId: string,
     const token = await getValidInstagramToken(userId, accountId)
     if (!token) return null
 
-    // First, get the media details
     const mediaResponse = await fetch(
       `https://graph.instagram.com/${mediaId}?fields=id,media_type,media_url,permalink,timestamp,like_count,comments_count&access_token=${token}`
     )
@@ -155,41 +149,36 @@ export async function fetchInstagramAnalytics(userId: string, accountId: string,
 
     const mediaData = await mediaResponse.json()
 
-    // Try to get insights (requires Instagram Business API)
     let insights = null
     try {
       const insightsResponse = await fetch(
         `https://graph.instagram.com/${mediaId}/insights?metric=impressions,reach,likes,comments,shares,saves&access_token=${token}`
       )
-
       if (insightsResponse.ok) {
         insights = await insightsResponse.json()
       }
     } catch (insightsError) {
-      console.log('Instagram insights not available (requires Business API):', insightsError)
+      console.log('Instagram insights not available:', insightsError)
     }
 
-    // Use real data if available, otherwise use basic metrics + mock insights
-    const likes = mediaData.like_count || Math.floor(Math.random() * 500) + 50
-    const comments = mediaData.comments_count || Math.floor(Math.random() * 50) + 5
-    const shares = Math.floor(Math.random() * 20) + 2 // Instagram doesn't provide share count via API
+    const likes = mediaData.like_count || 0
+    const comments = mediaData.comments_count || 0
+    const shares = 0 // Instagram doesn't provide share count easily
 
-    // If we have insights, use them, otherwise estimate
     let impressions, reach, saves
     if (insights && insights.data) {
       const insightData = insights.data.reduce((acc: any, insight: any) => {
-        acc[insight.name] = insight.values[0]?.value || 0
+        acc[insight.name] = insight.values?.[0]?.value || 0
         return acc
       }, {})
 
-      impressions = insightData.impressions || Math.floor(Math.random() * 2000) + 500
+      impressions = insightData.impressions || Math.max((likes + comments) * 10, 100)
       reach = insightData.reach || Math.floor(impressions * 0.8)
-      saves = insightData.saves || Math.floor(Math.random() * 30) + 5
+      saves = insightData.saves || 0
     } else {
-      // Estimate based on engagement
-      impressions = Math.max((likes + comments) * 10, Math.floor(Math.random() * 2000) + 500)
+      impressions = Math.max((likes + comments) * 10, 100)
       reach = Math.floor(impressions * 0.8)
-      saves = Math.floor(Math.random() * 30) + 5
+      saves = 0
     }
 
     return {
@@ -217,26 +206,20 @@ export async function fetchYouTubeAnalytics(userId: string, accountId: string, v
     const token = await getValidYouTubeToken(userId, accountId)
     if (!token) return null
 
-    // Use the enhanced YouTube analytics function
     const youtube: any = await import('@/lib/social/youtube')
-    const analytics =
-      (await (youtube.fetchYouTubeAnalytics?.(token, videoId) ??
-        youtube.getYouTubeVideoAnalytics?.(token, videoId))) ?? null
+    const analytics = (await (youtube.fetchYouTubeAnalytics?.(token, videoId) ?? youtube.getYouTubeVideoAnalytics?.(token, videoId))) ?? null
     
-    if (!analytics) {
-      return null
-    }
+    if (!analytics) return null
 
     return {
       platform: 'YOUTUBE',
-      postId: '', // Will be set by caller
+      postId: '',
       externalId: videoId,
       impressions: analytics.views,
       likes: analytics.likes,
       comments: analytics.comments,
-      shares: 0, // YouTube doesn't provide share count via API
-      clicks: analytics.views, // Views are essentially clicks for YouTube
-      saves: 0, // YouTube doesn't have saves
+      shares: 0,
+      clicks: analytics.views,
       reach: analytics.views,
       engagementRate: analytics.engagementRate,
       fetchedAt: new Date()
@@ -247,61 +230,52 @@ export async function fetchYouTubeAnalytics(userId: string, accountId: string, v
   }
 }
 
-// Fetch analytics for all platforms for a user
+// Fetch analytics for all platforms for a user using Supabase
 export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsData[]> {
   const analytics: AnalyticsData[] = []
 
   try {
-    // Get all user's social accounts
-    const socialAccounts = await db.socialAccount.findMany({
-      where: { userId, isActive: true }
-    })
+    const { data: socialAccounts, error: accError } = await (db as any)
+      .from('social_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_active', true)
 
-    // Get all published posts with publications
-    const posts = await db.post.findMany({
-      where: {
-        userId,
-        status: 'PUBLISHED',
-        publishedAt: {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-        }
-      },
-      include: {
-        publications: true
-      }
-    })
+    if (accError) throw accError
 
-    // Fetch analytics for each publication
-    for (const post of posts) {
-      for (const publication of post.publications) {
-        // Use platformPostId (saved platform-specific id)
-        if (!publication.platformPostId) continue
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+    const { data: posts, error: postsError } = await (db as any)
+      .from('posts')
+      .select('*, publications:post_publications(*)')
+      .eq('user_id', userId)
+      .eq('status', 'PUBLISHED')
+      .gte('published_at', thirtyDaysAgo)
 
-        // Find the related account by socialAccountId
-        const account = socialAccounts.find(
-          (acc: any) => acc.id === publication.socialAccountId
-        )
+    if (postsError) throw postsError
+
+    for (const post of (posts || [])) {
+      for (const publication of (post.publications || [])) {
+        if (!publication.platform_post_id) continue
+
+        const account = socialAccounts?.find((acc: any) => acc.id === publication.social_account_id)
         if (!account) continue
 
         let analyticsData: AnalyticsData | null = null
-
-        const platform = account.platform as string
-        const externalId = publication.platformPostId as string
+        const platform = account.platform
+        const externalId = publication.platform_post_id
 
         switch (platform) {
           case 'TWITTER':
-            analyticsData = await fetchTwitterAnalytics(userId, account.accountId, externalId)
+            analyticsData = await fetchTwitterAnalytics(userId, account.account_id, externalId)
             break
           case 'LINKEDIN':
-            analyticsData = await fetchLinkedInAnalytics(userId, account.accountId, externalId)
+            analyticsData = await fetchLinkedInAnalytics(userId, account.account_id, externalId)
             break
           case 'INSTAGRAM':
-            analyticsData = await fetchInstagramAnalytics(userId, account.accountId, externalId)
+            analyticsData = await fetchInstagramAnalytics(userId, account.account_id, externalId)
             break
           case 'YOUTUBE':
-            analyticsData = await fetchYouTubeAnalytics(userId, account.accountId, externalId)
-            break
-          default:
+            analyticsData = await fetchYouTubeAnalytics(userId, account.account_id, externalId)
             break
         }
 
@@ -309,15 +283,12 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
           analyticsData.postId = post.id
           analytics.push(analyticsData)
 
-          // Save to database
-          await db.postAnalytics.upsert({
-            where: {
-              postId_platform: {
-                postId: post.id,
-                platform: platform as any
-              }
-            },
-            update: {
+          // Save to database (Supabase upsert)
+          await (db as any)
+            .from('post_analytics')
+            .upsert({
+              post_id: post.id,
+              platform: platform,
               impressions: analyticsData.impressions,
               likes: analyticsData.likes,
               comments: analyticsData.comments,
@@ -325,22 +296,9 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
               clicks: analyticsData.clicks || 0,
               saves: analyticsData.saves || 0,
               reach: analyticsData.reach || analyticsData.impressions,
-              engagementRate: analyticsData.engagementRate,
-              updatedAt: new Date()
-            },
-            create: {
-              postId: post.id,
-              platform: platform as any,
-              impressions: analyticsData.impressions,
-              likes: analyticsData.likes,
-              comments: analyticsData.comments,
-              shares: analyticsData.shares,
-              clicks: analyticsData.clicks || 0,
-              saves: analyticsData.saves || 0,
-              reach: analyticsData.reach || analyticsData.impressions,
-              engagementRate: analyticsData.engagementRate
-            }
-          })
+              engagement_rate: analyticsData.engagementRate,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'post_id,platform' })
         }
       }
     }
@@ -352,23 +310,18 @@ export async function fetchAllUserAnalytics(userId: string): Promise<AnalyticsDa
   }
 }
 
-// Schedule analytics refresh for all users
+// Schedule analytics refresh for all users using Supabase
 export async function refreshAllAnalytics(): Promise<void> {
   try {
     console.log('🔄 Starting analytics refresh for all users...')
     
-    const users = await db.user.findMany({
-      where: {
-        socialAccounts: {
-          some: {
-            isActive: true
-          }
-        }
-      },
-      select: { id: true }
-    })
+    const { data: users, error: usersError } = await (db as any)
+      .from('users')
+      .select('id')
+      
+    if (usersError) throw usersError
 
-    for (const user of users) {
+    for (const user of (users || [])) {
       try {
         await fetchAllUserAnalytics(user.id)
         console.log(`✅ Analytics refreshed for user ${user.id}`)

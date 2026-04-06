@@ -3,7 +3,7 @@
 import { ReactNode, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/providers/theme-provider"
 import { LogoMark } from "@/components/layout/logo-mark"
@@ -18,7 +18,7 @@ const navigationItems = [
 
 export function AppShell({ children, title, subtitle }: { children: ReactNode, title?: string, subtitle?: string }) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { user: session, signOut } = useAuth()
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
 
   return (
@@ -80,7 +80,7 @@ export function AppShell({ children, title, subtitle }: { children: ReactNode, t
                         <User className="h-4 w-4 text-white" />
                       </div>
                       <span className="hidden md:inline max-w-32 truncate">
-                        {session.user?.name || session.user?.email?.split('@')[0]}
+                        {session?.user_metadata?.full_name || session?.email?.split('@')[0]}
                       </span>
                       <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                     </div>
@@ -90,10 +90,10 @@ export function AppShell({ children, title, subtitle }: { children: ReactNode, t
                     <div className="absolute right-0 mt-2 w-56 bg-background/80 backdrop-blur-xl rounded-xl shadow-modern-lg border border-white/20 py-2 animate-scale-in">
                       <div className="px-4 py-3 border-b border-white/10">
                         <p className="text-sm font-medium text-foreground mb-1">
-                          {session.user?.name || 'User'}
+                          {session?.user_metadata?.full_name || 'User'}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {session.user?.email}
+                          {session?.email}
                         </p>
                       </div>
 

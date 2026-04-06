@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
@@ -90,7 +90,7 @@ type OverviewResponse = {
 }
 
 export default function AppOwnerPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
 
   // Sidebar state (synced with other pages via localStorage + custom event)
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
@@ -245,16 +245,16 @@ export default function AppOwnerPage() {
   const refetch = () => fetchOverview()
 
   useEffect(() => {
-    if (status === 'loading') return
+    if (sessionLoading) return
     if (!session) return
     fetchOverview()
-  }, [status, session])
+  }, [sessionLoading, session])
 
-  if (status === 'loading') return <div>Loading...</div>
+  if (sessionLoading) return <div>Loading session...</div>
   if (!session) redirect('/auth/signin')
 
   // Owner gating (same behavior retained)
-  const isAppOwner = session?.user?.email === 'ghazanfarnaseer91@gmail.com'
+  const isAppOwner = session?.email === 'ghazanfarnaseer91@gmail.com'
   if (!isAppOwner) redirect('/dashboard')
 
   const getSystemHealthColor = (health: string) => {

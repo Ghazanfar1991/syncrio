@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import React from 'react';
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { redirect } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -52,7 +52,7 @@ interface PostPreview {
 type ViewMode = 'month' | 'week' | 'day'
 
 export default function CalendarPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [calendarData, setCalendarData] = useState<{ [date: string]: CalendarPost[] }>({})
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -93,7 +93,7 @@ React.useEffect(() => {
     }
   }, [session, currentDate, viewMode])
 
-  if (status === 'loading') {
+  if (sessionLoading) {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-br from-white to-slate-50 dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
    
@@ -122,7 +122,7 @@ React.useEffect(() => {
   }
 
   const fetchCalendarData = async () => {
-    if (!session?.user?.id) return
+    if (!session?.id) return
 
     try {
       setLoading(true)

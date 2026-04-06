@@ -1,4 +1,4 @@
-// Stripe webhook handler for subscription events
+// Stripe webhook handler for subscription events using Supabase
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe'
 import { db } from '@/lib/db'
@@ -81,18 +81,23 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
 
-  // Update subscription status
-  await db.subscription.update({
-    where: { userId },
-    data: {
-      tier: tier as any,
+  // Update subscription status in Supabase
+  const { error } = await (db as any)
+    .from('subscriptions')
+    .update({
+      tier: tier,
       status: 'TRIALING',
-      stripeSubscriptionId: session.subscription as string,
-      stripePriceId: session.line_items?.data[0]?.price?.id,
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-    }
-  })
+      stripe_subscription_id: session.subscription as string,
+      stripe_price_id: session.line_items?.data[0]?.price?.id || null,
+      current_period_start: new Date().toISOString(),
+      current_period_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('Error updating subscription in checkout completed:', error)
+  }
 }
 
 async function handleSubscriptionChange(subscription: Stripe.Subscription) {
@@ -103,20 +108,24 @@ async function handleSubscriptionChange(subscription: Stripe.Subscription) {
     return
   }
 
-  const subObj: any = subscription as any
-  await db.subscription.update({
-    where: { userId },
-    data: {
-      status: mapStripeStatus(subObj.status) as any,
-      currentPeriodStart: subObj.current_period_start
-        ? new Date(subObj.current_period_start * 1000)
+  const { error } = await (db as any)
+    .from('subscriptions')
+    .update({
+      status: mapStripeStatus(subscription.status),
+      current_period_start: subscription.current_period_start
+        ? new Date(subscription.current_period_start * 1000).toISOString()
         : null,
-      currentPeriodEnd: subObj.current_period_end
-        ? new Date(subObj.current_period_end * 1000)
+      current_period_end: subscription.current_period_end
+        ? new Date(subscription.current_period_end * 1000).toISOString()
         : null,
-      cancelAtPeriodEnd: !!subObj.cancel_at_period_end,
-    },
-  })
+      cancel_at_period_end: !!subscription.cancel_at_period_end,
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('Error updating subscription in change event:', error)
+  }
 }
 
 async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
@@ -127,26 +136,29 @@ async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
     return
   }
 
-  await db.subscription.update({
-    where: { userId },
-    data: {
+  const { error } = await (db as any)
+    .from('subscriptions')
+    .update({
       status: 'CANCELED',
-      cancelAtPeriodEnd: true,
-    }
-  })
+      cancel_at_period_end: true,
+      updated_at: new Date().toISOString()
+    })
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('Error updating subscription in cancel event:', error)
+  }
 }
 
 async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
-  // Handle successful payment - could send confirmation email, etc.
   console.log('Payment succeeded for invoice:', invoice.id)
 }
 
-// Map Stripe subscription.status to our app's status format (uppercase)
+async function handlePaymentFailed(invoice: Stripe.Invoice) {
+  console.log('Payment failed for invoice:', invoice.id)
+}
+
 function mapStripeStatus(status: string | null | undefined): string {
   if (!status) return 'ACTIVE'
   return status.toUpperCase()
-}
-async function handlePaymentFailed(invoice: Stripe.Invoice) {
-  // Handle failed payment - could send notification, etc.
-  console.log('Payment failed for invoice:', invoice.id)
 }

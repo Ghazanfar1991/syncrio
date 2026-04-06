@@ -1,97 +1,51 @@
-// Global type definitions for ConversAI Social
-
-// Extend NextAuth session types
-declare module "next-auth" {
-  interface Session {
-    user: {
-      id: string
-      name?: string | null
-      email?: string | null
-      image?: string | null
-    }
-  }
-}
-
-export interface User {
+// Shared auth types — replaces next-auth module augmentation
+export interface SyncUser {
   id: string
   email: string
-  name: string
-  subscription: SubscriptionTier
-  createdAt: Date
-  updatedAt: Date
+  name?: string | null
+  image?: string | null
+  subscriptionTier?: string
+  subscription?: {
+    tier: string
+    status: string
+  } | null
 }
 
-export interface SubscriptionTier {
-  id: string
-  name: "starter" | "growth" | "business" | "agency"
-  price: number
-  accounts: number
-  posts: number // -1 for unlimited
-}
+// Social platform enum — replaces Prisma enum
+export type SocialPlatform =
+  | 'TWITTER'
+  | 'LINKEDIN'
+  | 'INSTAGRAM'
+  | 'YOUTUBE'
+  | 'FACEBOOK'
+  | 'TIKTOK'
+  | 'TELEGRAM'
+  | 'THREADS'
+  | 'PINTEREST'
+  | 'REDDIT'
+  | 'BLUESKY'
+  | 'DISCORD'
+  | 'SLACK'
 
-export interface SocialAccount {
-  id: string
-  userId: string
-  platform: "twitter" | "linkedin" | "instagram" | "youtube"
-  accountId: string
-  accountName: string
-  accessToken: string
-  refreshToken?: string
-  expiresAt?: Date
-  isActive: boolean
-}
-
-export interface Post {
-  id: string
-  userId: string
-  content: string
-  hashtags: string[]
-  imageUrl?: string
-  platforms: string[]
-  status: "draft" | "approved" | "scheduled" | "published" | "failed"
-  scheduledAt?: Date
-  publishedAt?: Date
-  createdAt: Date
-}
-
-export interface ChatMessage {
-  id: string
-  userId: string
-  content: string
-  type: "user" | "assistant" | "system"
-  timestamp: Date
-  metadata?: any
-}
-
-export interface Analytics {
-  postId: string
-  platform: string
-  likes: number
-  comments: number
-  shares: number
-  views: number
-  engagement: number
-  fetchedAt: Date
-}
-
-export interface AnalyticsOverview {
-  totalPosts: number
-  totalImpressions: number
-  totalLikes: number
-  totalComments: number
-  totalShares: number
-  engagementRate: string
-  period: number
-  lifetimeMetrics?: {
-    totalPosts: number
-    totalViews: number
-    totalLikes: number
-    totalComments: number
-  }
-  periodMetrics?: {
-    totalPosts: number
-    totalViews: number
-    totalLikes: number
-    totalComments: number
-  }
-}
+export type AccountType = 'PERSONAL' | 'BUSINESS' | 'CREATOR'
+export type PostStatus = 'DRAFT' | 'APPROVED' | 'SCHEDULED' | 'PUBLISHED' | 'FAILED'
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'NEEDS_REVISION'
+export type PublicationStatus = 'PENDING' | 'PUBLISHED' | 'FAILED' | 'RETRYING'
+export type SubscriptionTier = 'STARTER' | 'GROWTH' | 'BUSINESS' | 'AGENCY'
+export type SubscriptionStatus =
+  | 'ACTIVE'
+  | 'CANCELED'
+  | 'INCOMPLETE'
+  | 'INCOMPLETE_EXPIRED'
+  | 'PAST_DUE'
+  | 'TRIALING'
+  | 'UNPAID'
+export type TeamRole = 'ADMIN' | 'EDITOR' | 'MEMBER' | 'VIEWER'
+export type AIFeature =
+  | 'CHAT_ASSISTANT'
+  | 'POST_GENERATOR'
+  | 'HASHTAG_GENERATOR'
+  | 'IMAGE_GENERATOR'
+  | 'VIDEO_GENERATOR'
+  | 'SCHEDULER_COPY'
+  | 'SUMMARIZER'

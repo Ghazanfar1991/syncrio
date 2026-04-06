@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useAuth } from "@/components/providers/auth-provider"
 import React from 'react';
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -11,7 +11,7 @@ import { Settings, Sparkles, ArrowLeft, User, Mail, FileText, Shield, CreditCard
 import Link from "next/link"
 
 export default function SettingsPage() {
-  const { data: session, status } = useSession()
+  const { user: session, loading: sessionLoading } = useAuth()
   const router = useRouter()
   const [collapsed, setCollapsed] = React.useState<boolean>(() => {
   if (typeof window === "undefined") return false;
@@ -29,11 +29,11 @@ React.useEffect(() => {
 
 
   useEffect(() => {
-    if (status === "loading") return
+    if (sessionLoading) return
     if (!session) router.push("/auth/signin")
-  }, [session, status, router])
+  }, [session, sessionLoading, router])
 
-  if (status === "loading") {
+  if (sessionLoading) {
     return (
       <div className="min-h-screen font-sans bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900 text-slate-900 dark:text-slate-100 transition-colors">
         {/* Sidebar */}
@@ -114,7 +114,7 @@ React.useEffect(() => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs opacity-70">Full Name</div>
-                          <div className="mt-2 text-2xl font-semibold tracking-tight">{session.user?.name || 'Not set'}</div>
+                          <div className="mt-2 text-2xl font-semibold tracking-tight">{session.user_metadata?.full_name || 'Not set'}</div>
                           <div className="mt-1 text-xs opacity-60">Profile name</div>
                         </div>
                         <div className="p-2 rounded-lg bg-black/5 dark:bg-white/8"><User className="w-5 h-5 text-indigo-600" /></div>
@@ -126,7 +126,7 @@ React.useEffect(() => {
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="text-xs opacity-70">Email Address</div>
-                          <div className="mt-2 text-2xl font-semibold tracking-tight">{session.user?.email}</div>
+                          <div className="mt-2 text-2xl font-semibold tracking-tight">{session.email}</div>
                           <div className="mt-1 text-xs opacity-60">Account email</div>
                         </div>
                         <div className="p-2 rounded-lg bg-black/5 dark:bg-white/8"><Mail className="w-5 h-5 text-purple-600" /></div>

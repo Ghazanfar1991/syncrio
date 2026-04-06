@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Card, CardContent } from "@/components/ui/card";
 import { Heart, MessageCircle, Repeat2, Share2, ThumbsUp, MoreHorizontal, Bookmark, Send } from "lucide-react";
 import { VideoPreview } from "@/components/video-preview";
@@ -19,22 +19,22 @@ interface PostPreviewProps {
 }
 
 export default function PostPreview({ platform, text, image, images, videoUrl, videos, hashtags, onVideoClick, includeImages = true, includeVideo = true }: PostPreviewProps) {
-  const { data: session } = useSession();
+  const { user: session } = useAuth();
   
   // Get user display name and username
   const getUserDisplayName = () => {
-    if (session?.user?.name) {
-      return session.user.name;
+    if (session?.user_metadata?.full_name) {
+      return session.user_metadata.full_name;
     }
-    if (session?.user?.email) {
-      return session.user.email.split('@')[0];
+    if (session?.email) {
+      return session.email.split('@')[0];
     }
     return 'User';
   };
   
   const getUserUsername = () => {
-    if (session?.user?.email) {
-      return session.user.email.split('@')[0];
+    if (session?.email) {
+      return session.email.split('@')[0];
     }
     return 'user';
   };

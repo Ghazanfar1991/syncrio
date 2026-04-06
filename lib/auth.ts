@@ -1,82 +1,27 @@
-// NextAuth.js configuration
-import { NextAuthOptions } from "next-auth"
-import { PrismaAdapter } from "@next-auth/prisma-adapter"
-import CredentialsProvider from "next-auth/providers/credentials"
-import GoogleProvider from "next-auth/providers/google"
-import { db } from "./db"
-import bcrypt from "bcryptjs"
+// Supabase auth helpers — replaces NextAuth
+import { createClient } from '@/lib/supabase/server'
 
-export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(db),
-  providers: [
-    // Email/Password authentication
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null
-        }
+/**
+ * Get the current authenticated user from the server-side Supabase client.
+ * Returns null if not authenticated.
+ */
+export async function getServerSession() {
+  const supabase = await createClient()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return null
+  return user
+}
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-          include: { subscription: true }
-        })
-
-        if (!user || !user.password) {
-          return null
-        }
-
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
-
-        if (!isPasswordValid) {
-          return null
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-        }
-      }
-    }),
-
-    // Google OAuth (optional)
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    }),
-  ],
-
-  session: {
-    strategy: "jwt",
-  },
-
-  pages: {
-    signIn: "/auth/signin",
-    // NextAuth does not support a signUp page; use newUser for post-signup redirect
-    newUser: "/auth/signup",
-  },
-
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-      }
-      return token
-    },
-
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.id as string
-      }
-      return session
-    },
-  },
-
-  secret: process.env.NEXTAUTH_SECRET,
+/**
+ * Get the user's profile from the `users` table (subscription tier etc.)
+ */
+export async function getServerUserProfile(userId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('users')
+    .select('*, subscription:subscriptions(*)')
+    .eq('id', userId)
+    .single()
+  if (error) return null
+  return data
 }

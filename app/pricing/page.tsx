@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
+import { useAuth } from "@/components/providers/auth-provider"
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { MarketingNav } from '@/components/layout/marketing-nav'
@@ -9,7 +9,7 @@ import { MarketingFooter } from '@/components/layout/marketing-footer'
 import { subscriptionTiers, formatPrice } from '@/lib/stripe'
 
 export default function PricingPage() {
-  const { data: session } = useSession()
+  const { user: session } = useAuth()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState<string | null>(null)
 

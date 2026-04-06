@@ -1,5 +1,5 @@
-// Stripe checkout session creation API
-import { NextRequest } from 'next/server'
+// Stripe checkout session creation API using Supabase
+import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError } from '@/lib/api-utils'
 import { stripe, subscriptionTiers, isStripeConfigured } from '@/lib/stripe'
@@ -23,8 +23,16 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // Create or get Stripe customer
-        let stripeCustomerId = user.subscription?.stripeCustomerId
+        // Create or get Stripe customer from Supabase
+        const { data: subscription, error: subError } = await (db as any)
+          .from('subscriptions')
+          .select('stripe_customer_id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+
+        if (subError) throw subError
+
+        let stripeCustomerId = subscription?.stripe_customer_id
 
         if (!stripeCustomerId) {
           const customer = await stripe.customers.create({
@@ -36,20 +44,23 @@ export async function POST(req: NextRequest) {
           })
           stripeCustomerId = customer.id
 
-          // Update user's subscription with customer ID
-          await db.subscription.upsert({
-            where: { userId: user.id },
-            update: { stripeCustomerId },
-            create: {
-              userId: user.id,
+          // Update user's subscription with customer ID in Supabase
+          const { error: upsertError } = await (db as any)
+            .from('subscriptions')
+            .upsert({
+              user_id: user.id,
               tier: 'STARTER',
               status: 'INCOMPLETE',
-              stripeCustomerId
-            }
-          })
+              stripe_customer_id: stripeCustomerId,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id' })
+
+          if (upsertError) throw upsertError
         }
 
         // Create checkout session
+        const appUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
+        
         const session = await stripe.checkout.sessions.create({
           customer: stripeCustomerId,
           payment_method_types: ['card'],
@@ -69,8 +80,8 @@ export async function POST(req: NextRequest) {
               tier: tier
             }
           },
-          success_url: `${process.env.NEXTAUTH_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${process.env.NEXTAUTH_URL}/pricing`,
+          success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appUrl}/pricing`,
           metadata: {
             userId: user.id,
             tier: tier

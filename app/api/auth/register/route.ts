@@ -1,59 +1,46 @@
-// User registration API endpoint
-import { NextRequest } from 'next/server'
-import { withErrorHandling } from '@/lib/middleware'
-import { apiSuccess, apiError, validateRequest, schemas } from '@/lib/api-utils'
-import { db } from '@/lib/db'
-import bcrypt from 'bcryptjs'
+// User registration is now handled directly by Supabase Auth client-side.
+// This endpoint creates the user profile row after Supabase Auth signup,
+// and is called via the Supabase Auth trigger (see: scripts/supabase-migration.sql).
+// Kept for manual profile creation if needed.
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { apiSuccess, apiError } from '@/lib/api-utils'
 
 export async function POST(req: NextRequest) {
-  return withErrorHandling(async (req: NextRequest) => {
+  try {
     const body = await req.json()
-    
-    try {
-      const { email, name, password } = validateRequest(schemas.createUser, body)
-      
-      // Check if user already exists
-      const existingUser = await db.user.findUnique({
-        where: { email }
-      })
-      
-      if (existingUser) {
-        return apiError('User with this email already exists', 400)
-      }
-      
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 12)
-      
-      // Create user
-      const user = await db.user.create({
-        data: {
-          email,
-          name,
-          password: hashedPassword,
-          emailVerified: new Date(), // Auto-verify for now, can add email verification later
-        }
-      })
-      
-      // Create default starter subscription (free trial)
-      await db.subscription.create({
-        data: {
-          userId: user.id,
-          tier: 'STARTER',
-          status: 'TRIALING',
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days trial
-        }
-      })
-      
-      // Remove password from response
-      const { password: _, ...userWithoutPassword } = user
-      
-      return apiSuccess({ 
-        user: userWithoutPassword,
-        message: 'Account created successfully. You can now sign in.'
-      }, 201)
-    } catch (error) {
-      return apiError(error instanceof Error ? error.message : 'Registration failed')
+    const { email, name, password } = body
+
+    if (!email || !password) {
+      return apiError('Email and password are required', 400)
     }
-  })(req)
+
+    // Use admin client to create the user in Supabase Auth
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      user_metadata: { name, full_name: name },
+      email_confirm: true, // Auto-confirm for now
+    })
+
+    if (error) {
+      return apiError(error.message, 400)
+    }
+
+    // Create starter subscription
+    if (data.user) {
+      await supabaseAdmin.from('subscriptions').insert({
+        user_id: data.user.id,
+        tier: 'STARTER',
+        status: 'TRIALING',
+        current_period_start: new Date().toISOString(),
+        current_period_end: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      })
+    }
+
+    return apiSuccess({ message: 'Account created successfully. Please sign in.' }, 201)
+  } catch (error) {
+    console.error('Registration error:', error)
+    return apiError('Registration failed', 500)
+  }
 }
