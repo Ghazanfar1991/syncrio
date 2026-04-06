@@ -447,12 +447,12 @@ export function AnalyticsOverview({
 
         if (result.success) {
           console.log('🔍 FRONTEND: Analytics data received:', {
-            overview: result.data.overview,
-            dailyAnalytics: result.data.dailyAnalytics,
-            topPosts: result.data.topPosts,
-            youtubeAnalytics: result.data.youtubeAnalytics,
-            hasLifetimeMetrics: !!(result.data.overview as any).lifetimeMetrics,
-            hasPeriodMetrics: !!(result.data.overview as any).periodMetrics
+            overview: result.data?.overview,
+            dailyAnalytics: result.data?.dailyAnalytics,
+            topPosts: result.data?.topPosts,
+            youtubeAnalytics: result.data?.youtubeAnalytics,
+            hasLifetimeMetrics: !!result.data?.overview?.lifetimeMetrics,
+            hasPeriodMetrics: !!result.data?.overview?.periodMetrics
           })
           setData(result.data)
         } else {
@@ -916,41 +916,49 @@ export function AnalyticsOverview({
                     </div>
                     
                     {/* Platform Stats */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs opacity-70">Posts</span>
-                        <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
-                          {platformData?.posts || 0}
-                        </span>
+                    {platformData?.notSupported ? (
+                      <div className="flex flex-col items-center justify-center p-3 h-[88px] rounded-xl bg-black/5 dark:bg-white/5 border border-dashed border-black/10 dark:border-white/10">
+                        <p className="text-[10px] font-medium opacity-60 text-center mb-1">ANALYTICS</p>
+                        <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 text-center">Currently Not Supported</p>
+                        <p className="text-[10px] opacity-40 text-center mt-1">Coming soon for this platform</p>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs opacity-70">Engagement</span>
-                        <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
-                          {platformData?.avgEngagement || '0.00'}%
-                        </span>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs opacity-70">Posts</span>
+                          <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
+                            {platformData?.posts || 0}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs opacity-70">Engagement</span>
+                          <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
+                            {platformData?.avgEngagement || '0.00'}%
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm opacity-70">Total Reach</span>
+                          <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
+                            {formatNumber(platformData?.totalReach || 0)}
+                          </span>
+                        </div>
+                        
+                        {/* Enhanced Progress Bar */}
+                        <div className="w-full bg-gray-200 dark:bg-neutral-700 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className={`h-2 rounded-full transition-all duration-700 ${
+                              isSelected ? 'bg-gradient-to-r from-rose-500 to-pink-500' : ''
+                            }`}
+                            style={{ 
+                              width: `${Math.min(parseFloat(platformData?.avgEngagement || '0'), 100)}%`,
+                              background: isSelected 
+                                ? 'linear-gradient(90deg, #f43f5e, #ec4899)' 
+                                : `linear-gradient(90deg, ${getPlatformColor(platform)}, ${getPlatformColor(platform)}80)`
+                            }}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm opacity-70">Total Reach</span>
-                        <span className={`font-semibold text-sm ${isSelected ? 'text-rose-700 dark:text-rose-300' : ''}`}>
-                          {formatNumber(platformData?.totalReach || 0)}
-                        </span>
-                      </div>
-                      
-                      {/* Enhanced Progress Bar */}
-                      <div className="w-full bg-gray-200 dark:bg-neutral-700 rounded-full h-2 overflow-hidden">
-                        <div 
-                          className={`h-2 rounded-full transition-all duration-700 ${
-                            isSelected ? 'bg-gradient-to-r from-rose-500 to-pink-500' : ''
-                          }`}
-                          style={{ 
-                            width: `${Math.min(parseFloat(platformData?.avgEngagement || '0'), 100)}%`,
-                            background: isSelected 
-                              ? 'linear-gradient(90deg, #f43f5e, #ec4899)' 
-                              : `linear-gradient(90deg, ${getPlatformColor(platform)}, ${getPlatformColor(platform)}80)`
-                          }}
-                        />
-                      </div>
-                    </div>
+                    )}
                     
                     {/* Hover Effect */}
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />

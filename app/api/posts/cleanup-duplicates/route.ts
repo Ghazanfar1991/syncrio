@@ -9,12 +9,14 @@ export async function POST(req: NextRequest) {
       try {
         console.log('🧹 Cleaning up duplicate posts for user:', user.id)
 
-        // Find all posts for the user
-        const allPosts = await db.post.findMany({
-          where: { userId: user.id },
-          include: { publications: true },
-          orderBy: { createdAt: 'desc' }
-        })
+        const { data: allPostsData, error } = await (db as any)
+          .from('posts')
+          .select('*, post_publications(*)')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+        const allPosts = allPostsData || []
 
         console.log(`📊 Found ${allPosts.length} total posts`)
 
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
             
             // Keep the most recent post, delete the rest
             const sortedPosts = posts.sort((a, b) => 
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
             )
             
             const postsToDelete = sortedPosts.slice(1)
@@ -47,14 +49,10 @@ export async function POST(req: NextRequest) {
             for (const postToDelete of postsToDelete) {
               try {
                 // Delete publications first
-                await db.postPublication.deleteMany({
-                  where: { postId: postToDelete.id }
-                })
+                await (db as any).from('post_publications').delete().eq('post_id', postToDelete.id)
                 
                 // Delete the post
-                await db.post.delete({
-                  where: { id: postToDelete.id }
-                })
+                await (db as any).from('posts').delete().eq('id', postToDelete.id)
                 
                 totalCleaned++
                 console.log(`✅ Deleted duplicate post: ${postToDelete.id}`)

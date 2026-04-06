@@ -1,8 +1,7 @@
 // App Owner Authentication Middleware
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '../auth'
-import { db } from '../db'
+import { getServerSession, getServerUserProfile } from '../auth'
+import { db } from '../db' // Supabase admin client
 
 export interface AppOwnerUser {
   id: string
@@ -23,23 +22,21 @@ export function withAppOwnerAuth(
 ) {
   return async (req: NextRequest) => {
     try {
-      const session = await getServerSession(authOptions)
+      const authUser = await getServerSession()
 
-      if (!session?.user?.email) {
+      if (!authUser?.email) {
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }
         )
       }
 
-      const user = await db.user.findUnique({
-        where: { email: session.user.email },
-        include: { subscription: true }
-      })
+      // Fetch full user profile including subscription from Supabase
+      const user = await getServerUserProfile(authUser.id)
 
       if (!user) {
         return NextResponse.json(
-          { error: 'User not found' },
+          { error: 'User not found in database' },
           { status: 404 }
         )
       }
@@ -60,7 +57,7 @@ export function withAppOwnerAuth(
         id: user.id,
         email: user.email,
         name: user.name || undefined,
-        role: 'APP_OWNER' as const, // Hardcoded role
+        role: 'APP_OWNER' as const,
         subscription: user.subscription ? {
           tier: user.subscription.tier,
           status: user.subscription.status
@@ -83,7 +80,6 @@ export function withAppOwnerAuth(
  */
 export async function isAppOwner(email: string): Promise<boolean> {
   try {
-    // Hardcoded check for simplicity
     return email === 'ghazanfarnaseer91@gmail.com'
   } catch (error) {
     console.error('Error checking app owner status:', error)
@@ -96,17 +92,17 @@ export async function isAppOwner(email: string): Promise<boolean> {
  */
 export async function getAppOwnerUser(email: string): Promise<AppOwnerUser | null> {
   try {
-    // Hardcoded check for simplicity
     if (email !== 'ghazanfarnaseer91@gmail.com') {
       return null
     }
 
-    const user = await db.user.findUnique({
-      where: { email },
-      include: { subscription: true }
-    })
+    const { data: user, error } = await (db as any)
+      .from('users')
+      .select('*, subscription:subscriptions(*)')
+      .eq('email', email)
+      .single()
 
-    if (!user) {
+    if (error || !user) {
       return null
     }
 
@@ -114,7 +110,7 @@ export async function getAppOwnerUser(email: string): Promise<AppOwnerUser | nul
       id: user.id,
       email: user.email,
       name: user.name || undefined,
-      role: 'APP_OWNER' as const, // Hardcoded role
+      role: 'APP_OWNER' as const,
       subscription: user.subscription ? {
         tier: user.subscription.tier,
         status: user.subscription.status
@@ -125,3 +121,4 @@ export async function getAppOwnerUser(email: string): Promise<AppOwnerUser | nul
     return null
   }
 }
+

@@ -54,7 +54,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
     // Single image - full width display
     if (imageArray.length === 1) {
       return (
-        <div className="mt-3 max-h-64 overflow-hidden">
+        <div className="mt-2 max-h-64 overflow-hidden">
           <img
             src={imageArray[0]}
             className="w-full h-60 object-contain rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
@@ -70,7 +70,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
 
     // Multiple images - horizontal scrollable gallery
     return (
-      <div className="mt-3">
+      <div className="mt-2">
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
           {imageArray.map((img, index) => (
             <div key={index} className="flex-shrink-0">
@@ -123,7 +123,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
     const firstVideo = validVideos[0];
 
     return (
-      <div className="mt-3">
+      <div className="mt-2">
         <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 relative">
           {/* Use VideoPreview component for enhanced functionality */}
           <VideoPreview
@@ -146,7 +146,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
   };
 
   const renderFacebook = () => (
-    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-5 backdrop-blur-sm">
+    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
           <span className="text-white font-bold text-sm">f</span>
@@ -207,7 +207,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
   );
 
   const renderTwitter = () => (
-    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-5 backdrop-blur-sm">
+    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center">
           <span className="text-white font-bold text-sm">𝕏</span>
@@ -260,7 +260,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
   );
 
   const renderLinkedIn = () => (
-    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-5 backdrop-blur-sm">
+    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 bg-blue-700 rounded-full flex items-center justify-center">
           <span className="text-white font-bold text-sm">in</span>
@@ -328,7 +328,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
   );
 
   const renderInstagram = () => (
-    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-5 backdrop-blur-sm">
+    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
           <span className="text-white font-bold text-sm">📷</span>
@@ -390,7 +390,7 @@ export default function PostPreview({ platform, text, image, images, videoUrl, v
   );
 
   const renderYouTube = () => (
-    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-5 backdrop-blur-sm">
+    <Card className="w-full bg-white/80 dark:bg-neutral-800/80 shadow-lg rounded-2xl border border-black/10 dark:border-white/10 p-4 backdrop-blur-sm">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-red-700 rounded-full flex items-center justify-center text-white font-semibold text-sm">
           YT

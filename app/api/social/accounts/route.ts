@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { bundleSocial, SUPPORTED_PLATFORMS } from '@/lib/bundle-social'
+import { bundleSocial } from '@/lib/bundle-social'
 
 const BUNDLE_API = 'https://api.bundle.social/api/v1'
 const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
+// Untyped alias — needed until Supabase types are regenerated post-migration
+const db = supabaseAdmin as any
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -13,35 +15,60 @@ async function getAuthUser() {
   return user
 }
 
-/** Get or lazily create a Bundle.social team for this user */
+/** Get or lazily create a Bundle.social team for this user.
+ *  Safe against unmigrated schema — falls back to BUNDLE_SOCIAL_TEAM_ID env var. */
 async function getOrCreateBundleTeam(userId: string): Promise<string> {
-  // 1. Try to find existing team row
-  const { data: team } = await supabaseAdmin
-    .from('teams')
-    .select('id, bundle_social_team_id')
-    .eq('owner_id', userId)
-    .maybeSingle()
+  // ── 1. Try DB lookup first (may fail if migration not yet run) ────────────
+  try {
+    const { data: team, error } = await db
+      .from('teams')
+      .select('id, bundle_social_team_id')
+      .eq('owner_id', userId)
+      .maybeSingle()
 
-  if (team?.bundle_social_team_id) {
-    return team.bundle_social_team_id
+    if (!error && team?.bundle_social_team_id) {
+      return team.bundle_social_team_id as string
+    }
+  } catch (dbErr) {
+    // Column or table not yet migrated — fall through to env var / create new
+    console.warn('getOrCreateBundleTeam: DB lookup failed (migration pending?):', dbErr)
   }
 
-  // 2. Fetch user info for a nice team name
-  const { data: userData } = await supabaseAdmin
-    .from('users')
-    .select('name, email')
-    .eq('id', userId)
-    .maybeSingle()
+  // ── 2. Use env var team as fallback if present ─────────────────────────────
+  const envTeamId = process.env.BUNDLE_SOCIAL_TEAM_ID
+  if (envTeamId) {
+    // Silently attempt to persist this for next time
+    try {
+      const { data: existingTeam } = await db
+        .from('teams')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle()
 
-  const label = userData?.name || userData?.email || userId
+      if (existingTeam?.id) {
+        await db
+          .from('teams')
+          .update({ bundle_social_team_id: envTeamId })
+          .eq('id', existingTeam.id)
+      }
+    } catch { /* ignore — migration not run yet */ }
+    return envTeamId
+  }
 
-  // 3. Create Bundle.social team
+  // ── 3. Provision a new Bundle team ────────────────────────────────────────
+  let label = userId
+  try {
+    const { data: userData } = await db
+      .from('users')
+      .select('name, email')
+      .eq('id', userId)
+      .maybeSingle()
+    label = (userData as any)?.name || (userData as any)?.email || userId
+  } catch { /* ignore */ }
+
   const res = await fetch(`${BUNDLE_API}/team`, {
     method: 'POST',
-    headers: {
-      'x-api-key': BUNDLE_KEY(),
-      'Content-Type': 'application/json',
-    },
+    headers: { 'x-api-key': BUNDLE_KEY(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: `Syncrio — ${label}` }),
   })
 
@@ -53,20 +80,21 @@ async function getOrCreateBundleTeam(userId: string): Promise<string> {
   const remoteTeam = await res.json()
   const bundleTeamId: string = remoteTeam.id
 
-  // 4. Upsert team row in Supabase
-  if (team?.id) {
-    await supabaseAdmin
+  // Persist to DB (best-effort)
+  try {
+    const { data: existingTeam } = await db
       .from('teams')
-      .update({ bundle_social_team_id: bundleTeamId })
-      .eq('id', team.id)
-  } else {
-    await supabaseAdmin
-      .from('teams')
-      .insert({
-        owner_id: userId,
-        name: `${label}'s Workspace`,
-        bundle_social_team_id: bundleTeamId,
-      })
+      .select('id')
+      .eq('owner_id', userId)
+      .maybeSingle()
+
+    if (existingTeam?.id) {
+      await db.from('teams').update({ bundle_social_team_id: bundleTeamId }).eq('id', (existingTeam as any).id)
+    } else {
+      await db.from('teams').insert({ owner_id: userId, name: `${label}'s Workspace`, bundle_social_team_id: bundleTeamId })
+    }
+  } catch (persistErr) {
+    console.warn('getOrCreateBundleTeam: failed to persist team ID (migration pending?):', persistErr)
   }
 
   return bundleTeamId
@@ -111,59 +139,87 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
 
-    // ── ACTION: CONNECT (generate hosted portal link) ───────────────────────
+    // ── ACTION: CONNECT (generate hosted portal link or direct oauth check)
     if (action === 'connect') {
       const { platform } = body
-
       const teamId = await getOrCreateBundleTeam(user.id)
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL!
+      const host = request.headers.get('host')
+      const proto = request.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
+      const redirectUrl = `${proto}://${host}/integrations?sync=true`
 
-      // Fetch user profile for personalised portal branding
-      const { data: userData } = await supabaseAdmin
-        .from('users')
-        .select('name, avatar_url')
-        .eq('id', user.id)
-        .maybeSingle()
+      // 1. Direct Platform Connection (Vastly superior UX, bypasses portal)
+      if (platform) {
+        const { withBusinessScope } = body
+        const connectBody: Record<string, unknown> = {
+          type: platform,
+          teamId,
+          redirectUrl,
+        }
 
-      // Platforms to show on the hosted portal — one specific platform when clicked directly
-      const socialAccountTypes = platform
-        ? [platform]
-        : SUPPORTED_PLATFORMS.map(p => p.id)
+        // Direct Instagram OAuth (no FB Page required)
+        if (platform === 'INSTAGRAM') {
+          connectBody.instagramConnectionMethod = 'INSTAGRAM'
+        }
 
+        // Broaden Meta permissions if requested
+        if (withBusinessScope) {
+          connectBody.withBusinessScope = true
+        }
+
+        const res = await fetch(`${BUNDLE_API}/social-account/connect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': BUNDLE_KEY(),
+          },
+          body: JSON.stringify(connectBody),
+        })
+
+        if (!res.ok) {
+          const errText = await res.text()
+          console.error(`Bundle connect error for ${platform}:`, errText)
+          
+          let parsedErr: any = {}
+          try { parsedErr = JSON.parse(errText) } catch (e) {}
+          
+          // Detect "already connected" scenario
+          if (res.status === 400 && parsedErr.message?.toLowerCase().includes('already')) {
+            return NextResponse.json({ 
+              success: false, 
+              error: 'already_connected', 
+              message: parsedErr.message 
+            }, { status: 400 })
+          }
+
+          return NextResponse.json({ 
+            success: false, 
+            error: parsedErr.message || `Failed to initiate ${platform} connection` 
+          }, { status: 400 })
+        }
+
+        const data = await res.json()
+        return NextResponse.json({ success: true, url: data.url })
+      }
+
+      // 2. Fallback: Generic Hosted Portal (if user clicks "Connect Anything")
       const portalBody: Record<string, unknown> = {
         teamId,
-        redirectUrl: `${appUrl}/integrations?sync=true`,
-        socialAccountTypes,
-        language: 'en',
-        // Branding
-        logoUrl: `${appUrl}/logo.png`,
-        ...(userData?.name && { userName: userData.name }),
-        ...(userData?.avatar_url && { userLogoUrl: userData.avatar_url }),
-        hideGoBackButton: false,
-        goBackButtonText: 'Back to Syncrio',
-        showModalOnConnectSuccess: false,
+        redirectUrl,
       }
 
-      // Direct Instagram OAuth (no FB Page required) when specifically connecting Instagram
-      if (platform === 'INSTAGRAM') {
-        portalBody.instagramConnectionMethod = 'INSTAGRAM'
-      }
+      const { data: userData } = await db.from('users').select('name').eq('id', user.id).maybeSingle()
+      if (userData?.name) portalBody.userName = userData.name
 
       const res = await fetch(`${BUNDLE_API}/social-account/create-portal-link`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': BUNDLE_KEY(),
-        },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': BUNDLE_KEY() },
         body: JSON.stringify(portalBody),
       })
 
       if (!res.ok) {
-        const err = await res.text()
-        console.error('Bundle portal link error:', err)
-        throw new Error('Failed to create portal link')
+        const errText = await res.text()
+        return NextResponse.json({ success: false, error: `Portal link failed: ${errText}` }, { status: 400 })
       }
-
       const data = await res.json()
       return NextResponse.json({ success: true, url: data.url })
     }
@@ -183,41 +239,99 @@ export async function POST(request: NextRequest) {
 
       let synced = 0
       for (const acc of accounts) {
-        await supabaseAdmin
+        // Log raw account for debugging
+        console.log(`🔄 Syncing account [${acc.type}]:`, JSON.stringify({
+          id: acc.id,
+          displayName: acc.displayName,
+          isRequireSetChannel: acc.isRequireSetChannel,
+          channelId: acc.channelId,
+          channelsCount: acc.channels?.length
+        }))
+
+        // Robustly determine if channel selection is required
+        const PLATFORMS_REQUIRING_CHANNEL = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE', 'LINKEDIN', 'GOOGLE_BUSINESS']
+        const isPickNeeded = acc.isRequireSetChannel || (PLATFORMS_REQUIRING_CHANNEL.includes(acc.type) && !acc.channelId)
+        
+        // Use a more descriptive name if none is provided
+        const namePlaceholder = `${acc.type} Account`
+        let displayName = acc.displayName || acc.name
+        
+        // If we have a channelId but No displayName, find it in the channels list
+        if (!displayName && acc.channelId && acc.channels) {
+          const matched = acc.channels.find((c: any) => c.id === acc.channelId)
+          if (matched) displayName = matched.name
+        }
+
+        const displayNamePlaceholder = isPickNeeded ? `Configure ${acc.type}` : `${acc.type} Account`
+        
+        const payload = {
+          user_id: user.id,
+          platform: acc.type,
+          account_id: acc.platformId || acc.externalId || acc.id,
+          account_name: acc.displayName || acc.username || acc.name || displayName || namePlaceholder,
+          display_name: displayName || displayNamePlaceholder,
+          username: acc.username || null,
+          avatar_url: acc.avatarUrl || null,
+          access_token: 'managed_by_bundle',
+          is_connected: true,
+          is_active: true,
+          needs_reauth: false,
+          bundle_social_account_id: acc.id,
+          metadata: {
+            requires_channel_selection: isPickNeeded,
+            available_channels: acc.channels || [],
+            channel_id: acc.channelId || null
+          },
+          updated_at: new Date().toISOString(),
+        }
+        
+        // Manual lookup to avoid PostgreSQL UNIQUE constraint ON CONFLICT errors
+        const { data: existing } = await (db as any)
           .from('social_accounts')
-          .upsert(
-            {
-              user_id: user.id,
-              platform: acc.type,
-              account_id: acc.platformId || acc.externalId || acc.id,
-              account_name: acc.displayName || acc.username || acc.name,
-              display_name: acc.displayName || acc.name,
-              username: acc.username,
-              avatar_url: acc.avatarUrl || null,
-              access_token: 'managed_by_bundle',
-              is_connected: true,
-              is_active: true,
-              needs_reauth: false,
-              bundle_social_account_id: acc.id,
-              metadata: {
-                requires_channel_selection: acc.isRequireSetChannel || false,
-                available_channels: acc.channels || [],
-              },
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'bundle_social_account_id' }
-          )
+          .select('id')
+          .eq('bundle_social_account_id', acc.id)
+          .maybeSingle()
+
+        if (existing) {
+          const { error: updateError } = await (db as any).from('social_accounts').update(payload).eq('id', existing.id)
+          if (updateError) {
+            console.error('Update error:', updateError)
+            throw updateError
+          }
+        } else {
+          const { error: insertError } = await (db as any).from('social_accounts').insert(payload)
+          if (insertError) {
+            console.error('Insert error:', insertError)
+            throw insertError
+          }
+        }
+        
         synced++
       }
 
       // Also mark any accounts NOT returned by Bundle as disconnected
       const activeBundleIds = accounts.map((a: any) => a.id).filter(Boolean)
       if (activeBundleIds.length > 0) {
-        await supabaseAdmin
+        const { data: userAccounts } = await (db as any)
           .from('social_accounts')
-          .update({ is_connected: false, is_active: false })
+          .select('id, bundle_social_account_id')
           .eq('user_id', user.id)
-          .not('bundle_social_account_id', 'in', `(${activeBundleIds.map((id: string) => `'${id}'`).join(',')})`)
+          
+        if (userAccounts) {
+          const accountsToDisconnect = userAccounts.filter((a: any) => 
+            a.bundle_social_account_id && !activeBundleIds.includes(a.bundle_social_account_id)
+          )
+          
+          if (accountsToDisconnect.length > 0) {
+            console.log(`🧹 Deactivating ${accountsToDisconnect.length} stale Bundle accounts:`, accountsToDisconnect.map((a: any) => a.id))
+            for (const ac of accountsToDisconnect) {
+              await (db as any)
+                .from('social_accounts')
+                .update({ is_connected: false, is_active: false })
+                .eq('id', ac.id)
+            }
+          }
+        }
       }
 
       return NextResponse.json({
@@ -242,17 +356,59 @@ export async function POST(request: NextRequest) {
       })
 
       if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`set-channel failed: ${err}`)
+        const errText = await res.text()
+        let parsedErr: any = {}
+        try { parsedErr = JSON.parse(errText) } catch (e) {}
+
+        // Handle specific "already connected" case (e.g. from failed previous attempt)
+        if (res.status === 400 && parsedErr.message?.toLowerCase().includes('already')) {
+          console.warn('⚠️ set-channel warning: Platform already connected. Synching anyway...')
+        } else {
+          throw new Error(`set-channel failed: ${errText}`)
+        }
       }
 
-      // Refresh this account's data from Bundle
+      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
+      // After setting a channel, the account name/avatar usually change to match the channel
       if (socialAccountId) {
-        await supabaseAdmin
-          .from('social_accounts')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('bundle_social_account_id', socialAccountId)
-          .eq('user_id', user.id)
+        const accRes = await fetch(`${BUNDLE_API}/social-account/${socialAccountId}`, {
+          headers: { 'x-api-key': BUNDLE_KEY() },
+        })
+        
+        if (accRes.ok) {
+          const acc = await accRes.json()
+          
+          const PLATFORMS_REQUIRING_CHANNEL = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE', 'LINKEDIN', 'GOOGLE_BUSINESS']
+          const isPickNeeded = acc.isRequireSetChannel || (PLATFORMS_REQUIRING_CHANNEL.includes(platform) && !acc.channelId)
+          
+          const namePlaceholder = `${platform} Account`
+          let displayName = acc.displayName || acc.name
+
+          // Extract specifically selected channel name if top-level is still placeholders
+          if ((!displayName || displayName.includes('Configure')) && acc.channelId && acc.channels) {
+            const matched = acc.channels.find((c: any) => c.id === acc.channelId)
+            if (matched) displayName = matched.name
+          }
+
+          const displayNamePlaceholder = isPickNeeded ? `Configure ${platform}` : `${platform} Account`
+
+          await db
+            .from('social_accounts')
+            .update({
+              account_name: acc.displayName || acc.username || acc.name || displayName || namePlaceholder,
+              display_name: displayName || displayNamePlaceholder,
+              username: acc.username || null,
+              avatar_url: acc.avatarUrl || null,
+              metadata: {
+                requires_channel_selection: isPickNeeded,
+                available_channels: acc.channels || [],
+                channel_id: acc.channelId || null
+              },
+              updated_at: new Date().toISOString()
+            })
+            .eq('bundle_social_account_id', socialAccountId)
+            .eq('user_id', user.id)
+        }
       }
 
       return NextResponse.json({ success: true, message: 'Channel selected successfully' })
@@ -275,6 +431,29 @@ export async function POST(request: NextRequest) {
       if (!res.ok) {
         const err = await res.text()
         throw new Error(`unset-channel failed: ${err}`)
+      }
+
+      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
+      const { socialAccountId: sId } = body
+      if (sId) {
+        const accRes = await fetch(`${BUNDLE_API}/social-account/${sId}`, {
+          headers: { 'x-api-key': BUNDLE_KEY() },
+        })
+        
+        if (accRes.ok) {
+          const acc = await accRes.json()
+          await db
+            .from('social_accounts')
+            .update({
+              metadata: {
+                requires_channel_selection: acc.isRequireSetChannel || false,
+                available_channels: acc.channels || [],
+              },
+              updated_at: new Date().toISOString()
+            })
+            .eq('bundle_social_account_id', sId)
+            .eq('user_id', user.id)
+        }
       }
 
       return NextResponse.json({ success: true, message: 'Channel unset successfully' })
@@ -302,7 +481,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await db
       .from('social_accounts')
       .upsert(
         {
@@ -371,7 +550,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 })
     }
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await db
       .from('social_accounts')
       .update({ ...updateData, updated_at: new Date().toISOString() })
       .eq('id', id)
@@ -405,7 +584,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Fetch the account (verify ownership + get Bundle ID)
-    const { data: existing } = await supabaseAdmin
+    const { data: existing } = await db
       .from('social_accounts')
       .select('id, bundle_social_account_id')
       .eq('id', id)
@@ -437,7 +616,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 2. Remove from Supabase
-    await supabaseAdmin.from('social_accounts').delete().eq('id', id)
+    await db.from('social_accounts').delete().eq('id', id)
 
     return NextResponse.json({ success: true, message: 'Account disconnected' })
   } catch (error) {

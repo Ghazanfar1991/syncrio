@@ -21,8 +21,6 @@ import {
 import {AdvancedEditModal} from '@/components/content/advanced-edit-modal'
 import {ScheduleModal} from '@/components/content/schedule-modal'
 import { VideoPreview } from '@/components/video-preview'
-import { getImageErrorMessage, platformSupportsImages } from '@/lib/social/image-handler'
-import { convertImageForPlatform } from '@/lib/social/image-converter'
 
 interface Post {
   id: string
@@ -629,21 +627,7 @@ React.useEffect(() => {
         }
         
         if (errorMsg.includes('media') || errorMsg.includes('image')) {
-          // Check if this is an image-related error
-          const platform = publication.platform
-          if (platform && platformSupportsImages(platform)) {
-            // Use the new image converter for better error messages
-            const imageUrl = post.imageUrl || post.images
-            if (imageUrl) {
-              const result = convertImageForPlatform(imageUrl, platform)
-              if (!result.success) {
-                return result.error || 'Image format not supported by this platform.'
-              }
-            }
-            return getImageErrorMessage(platform, imageUrl)
-          } else {
-            return 'Media upload failed. Please check your image format and try again.'
-          }
+          return 'Media upload failed. Please check your image format and try again.'
         }
         
         // For other technical errors, provide a generic but helpful message

@@ -34,7 +34,6 @@ export async function middleware(request: NextRequest) {
   const isProtected =
     pathname.startsWith('/dashboard') ||
     (pathname.startsWith('/api') &&
-      !pathname.startsWith('/api/auth') &&
       !pathname.startsWith('/api/stripe/webhook'))
 
   if (isProtected && !user) {

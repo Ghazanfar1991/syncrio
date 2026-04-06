@@ -20,34 +20,37 @@ export async function POST(req: NextRequest) {
         console.log('🧹 Cleaning up duplicate drafts for post:', { postId, content: content.substring(0, 50), platform })
 
         // Get the original post to verify ownership
-        const originalPost = await db.post.findFirst({
-          where: {
-            id: postId,
-            userId: user.id
-          }
-        })
+        const { data: originalPost, error: originalError } = await db
+          .from('posts')
+          .select('id')
+          .eq('id', postId)
+          .eq('user_id', user.id)
+          .single()
 
-        if (!originalPost) {
+        if (originalError || !originalPost) {
           return apiError('Post not found or not accessible', 404)
         }
 
         // Find draft posts with matching content for the same platform
-        const duplicateDrafts = await db.post.findMany({
-          where: {
-            userId: user.id,
-            status: 'DRAFT',
-            platform: platform as any,
-            content: content,
-            id: { not: postId } // Exclude the original post
-          },
-          include: {
-            publications: true
-          }
-        })
+        const { data: duplicateDraftsRes, error: duplicatesError } = await db
+          .from('posts')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('status', 'DRAFT')
+          .eq('platform', platform)
+          .eq('content', content)
+          .neq('id', postId) // Exclude the original post
 
-        console.log(`🧹 Found ${duplicateDrafts.length} duplicate draft posts to cleanup`)
+        const duplicateDrafts = (duplicateDraftsRes || []) as any[]
 
-        if (duplicateDrafts.length === 0) {
+        if (duplicatesError) {
+          console.error('❌ Failed to fetch duplicate drafts:', duplicatesError)
+          return apiError('Failed to fetch duplicate drafts', 500)
+        }
+
+        console.log(`🧹 Found ${duplicateDrafts?.length || 0} duplicate draft posts to cleanup`)
+
+        if (!duplicateDrafts || duplicateDrafts.length === 0) {
           return apiSuccess({
             message: 'No duplicate draft posts found to cleanup',
             cleanedCount: 0
@@ -59,18 +62,20 @@ export async function POST(req: NextRequest) {
         for (const post of duplicateDrafts) {
           try {
             // Delete publications first (due to foreign key constraints)
-            await db.postPublication.deleteMany({
-              where: {
-                postId: post.id
-              }
-            })
+            const { error: pubDeleteError } = await db
+              .from('post_publications')
+              .delete()
+              .eq('post_id', post.id)
+            
+            if (pubDeleteError) throw pubDeleteError
 
             // Delete the post
-            await db.post.delete({
-              where: {
-                id: post.id
-              }
-            })
+            const { error: postDeleteError } = await db
+              .from('posts')
+              .delete()
+              .eq('id', post.id)
+            
+            if (postDeleteError) throw postDeleteError
 
             cleanedCount++
             console.log(`✅ Cleaned up duplicate draft post: ${post.id}`)

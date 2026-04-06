@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ log: process.env.NODE_ENV === 'development' ? ['error'] : [] })
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+import { db } from '@/lib/db'
 
 export async function GET() {
   try {
-    const [providersRaw, modelsRaw, assignmentsRaw] = await Promise.all([
-      prisma.aIProvider.findMany().catch(() => []),
-      prisma.aIModel.findMany().catch(() => []),
-      prisma.featureModel.findMany({ orderBy: [{ feature: 'asc' }, { priority: 'asc' }] }).catch(() => []),
+    const [
+      { data: providersRaw, error: pErr },
+      { data: modelsRaw, error: mErr },
+      { data: assignmentsRaw, error: aErr }
+    ] = await Promise.all([
+      (db as any).from('ai_providers').select('*'),
+      (db as any).from('ai_models').select('*'),
+      (db as any).from('feature_models').select('*').order('feature', { ascending: true }).order('priority', { ascending: true }),
     ])
 
-    const providers = providersRaw.map((p: any) => ({
+    if (pErr || mErr || aErr) {
+      console.error('Fetch error:', { pErr, mErr, aErr })
+    }
+
+    const providers = (providersRaw || []).map((p: any) => ({
       id: p.id,
       name: p.name,
       type: p.type,
@@ -50,19 +54,19 @@ export async function GET() {
     })
 
     const providerById = new Map<string, any>()
-    for (const p of providersRaw as any[]) providerById.set(p.id, p)
+    for (const p of (providersRaw || []) as any[]) providerById.set(p.id, p)
 
-    const models = (modelsRaw as any[]).map((m) => {
-      const pid = m.providerId ?? m.provider_id
+    const models = ((modelsRaw || []) as any[]).map((m) => {
+      const pid = m.provider_id
       const prov = pid ? providerById.get(pid) : undefined
       return mapModel(m, prov)
     })
 
-    // Group assignments by feature, mapping model + provider to camelCase
+    // Group assignments by feature
     const byFeature: Record<string, { feature: string; models: any[] }> = {}
-    for (const a of assignmentsRaw as any[]) {
+    for (const a of (assignmentsRaw || []) as any[]) {
       if (!byFeature[a.feature]) byFeature[a.feature] = { feature: a.feature, models: [] }
-      const mid = (a as any).modelId ?? (a as any).model_id
+      const mid = a.model_id
       const model = models.find((m) => m.id === mid)
       if (model) {
         byFeature[a.feature].models.push({ id: a.id, priority: a.priority, model })
@@ -84,56 +88,60 @@ export async function POST(req: Request) {
     if (action === 'provider') {
       const { name, type, baseUrl, apiKeyEnvVar, isActive, metadata } = body ?? {}
       if (!name || !type) return NextResponse.json({ error: 'name and type are required' }, { status: 400 })
-      const created = await prisma.aIProvider.create({
-        data: {
-          name,
-          type,
-          base_url: baseUrl || null,
-          api_key_env_var: apiKeyEnvVar || null,
-          is_active: typeof isActive === 'boolean' ? isActive : true,
-          metadata: metadata ?? undefined,
-        } as any,
-      })
+      
+      const { data: created, error } = await (db as any).from('ai_providers').insert({
+        name,
+        type,
+        base_url: baseUrl || null,
+        api_key_env_var: apiKeyEnvVar || null,
+        is_active: typeof isActive === 'boolean' ? isActive : true,
+        metadata: metadata ?? null,
+      }).select().single()
+
+      if (error) throw error
+
       return NextResponse.json({ ok: true, provider: {
         id: created.id,
         name: created.name,
         type: created.type,
-        baseUrl: (created as any).base_url ?? null,
-        apiKeyEnvVar: (created as any).api_key_env_var ?? null,
-        isActive: (created as any).is_active,
+        baseUrl: created.base_url ?? null,
+        apiKeyEnvVar: created.api_key_env_var ?? null,
+        isActive: created.is_active,
         metadata: created.metadata ?? null,
-        createdAt: (created as any).created_at,
-        updatedAt: (created as any).updated_at,
+        createdAt: created.created_at,
+        updatedAt: created.updated_at,
       } })
     }
 
     if (action === 'model') {
       const { providerId, name, modelId, modality, systemPrompt, defaultOptions, capabilities, isActive } = body ?? {}
       if (!providerId || !name || !modelId) return NextResponse.json({ error: 'providerId, name and modelId are required' }, { status: 400 })
-      const created = await prisma.aIModel.create({
-        data: {
-          provider_id: providerId,
-          name,
-          model_id: modelId,
-          modality: modality || 'TEXT',
-          system_prompt: systemPrompt || null,
-          default_options: defaultOptions ?? undefined,
-          capabilities: capabilities ?? undefined,
-          is_active: typeof isActive === 'boolean' ? isActive : true,
-        } as any,
-      })
+      
+      const { data: created, error } = await (db as any).from('ai_models').insert({
+        provider_id: providerId,
+        name,
+        model_id: modelId,
+        modality: modality || 'TEXT',
+        system_prompt: systemPrompt || null,
+        default_options: defaultOptions ?? null,
+        capabilities: capabilities ?? null,
+        is_active: typeof isActive === 'boolean' ? isActive : true,
+      }).select().single()
+
+      if (error) throw error
+
       return NextResponse.json({ ok: true, model: {
         id: created.id,
-        providerId: (created as any).provider_id,
+        providerId: created.provider_id,
         name: created.name,
-        modelId: (created as any).model_id,
-        modality: (created as any).modality,
-        systemPrompt: (created as any).system_prompt,
-        defaultOptions: (created as any).default_options,
-        capabilities: (created as any).capabilities,
-        isActive: (created as any).is_active,
-        createdAt: (created as any).created_at,
-        updatedAt: (created as any).updated_at,
+        modelId: created.model_id,
+        modality: created.modality,
+        systemPrompt: created.system_prompt,
+        defaultOptions: created.default_options,
+        capabilities: created.capabilities,
+        isActive: created.is_active,
+        createdAt: created.created_at,
+        updatedAt: created.updated_at,
       } })
     }
 
@@ -141,23 +149,20 @@ export async function POST(req: Request) {
       const { feature, modelId, priority } = body ?? {}
       if (!feature || !modelId) return NextResponse.json({ error: 'feature and modelId are required' }, { status: 400 })
       const p = typeof priority === 'number' ? priority : 0
+      
       // Upsert by (feature, priority)
-      const existing = await prisma.featureModel.findFirst({ where: { feature, priority: p } })
-      let saved
+      const { data: existing } = await (db as any).from('feature_models').select('id').eq('feature', feature).eq('priority', p).maybeSingle()
+      
+      let saved, error
       if (existing) {
-        try {
-          saved = await prisma.featureModel.update({ where: { id: existing.id }, data: { modelId } as any })
-        } catch {
-          saved = await prisma.featureModel.update({ where: { id: existing.id }, data: { model_id: modelId } as any })
-        }
+        ({ data: saved, error } = await (db as any).from('feature_models').update({ model_id: modelId }).eq('id', existing.id).select().single())
       } else {
-        try {
-          saved = await prisma.featureModel.create({ data: { feature, modelId, priority: p } as any })
-        } catch {
-          saved = await prisma.featureModel.create({ data: { feature, model_id: modelId, priority: p } as any })
-        }
+        ({ data: saved, error } = await (db as any).from('feature_models').insert({ feature, model_id: modelId, priority: p }).select().single())
       }
-      return NextResponse.json({ ok: true, assignment: { id: saved.id, feature: saved.feature, priority: saved.priority, modelId: (saved as any).modelId ?? (saved as any).model_id } })
+
+      if (error) throw error
+
+      return NextResponse.json({ ok: true, assignment: { id: saved.id, feature: saved.feature, priority: saved.priority, modelId: saved.model_id } })
     }
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
@@ -166,3 +171,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.message ?? 'Internal error' }, { status: 500 })
   }
 }
+

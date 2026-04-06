@@ -10,19 +10,19 @@ export async function POST(req: NextRequest) {
         console.log('🧹 Cleaning up orphaned drafts for user:', user.id)
 
         // Find drafts that have no publications (orphaned)
-        const orphanedDrafts = await db.post.findMany({
-          where: {
-            userId: user.id,
-            status: 'DRAFT',
-            publications: {
-              none: {} // No publications
-            }
-          }
-        })
+        const { data: orphanedDrafts, error: fetchError } = await (db as any)
+          .from('posts')
+          .select('id, post_publications(id)')
+          .eq('user_id', user.id)
+          .eq('status', 'DRAFT')
 
-        console.log(`🧹 Found ${orphanedDrafts.length} orphaned drafts`)
+        if (fetchError) throw fetchError
 
-        if (orphanedDrafts.length === 0) {
+        const trulyOrphaned = orphanedDrafts?.filter((d: any) => !d.post_publications || d.post_publications.length === 0) || []
+
+        console.log(`🧹 Found ${trulyOrphaned.length} orphaned drafts`)
+
+        if (trulyOrphaned.length === 0) {
           return apiSuccess({
             message: 'No orphaned drafts found',
             cleanedCount: 0
@@ -31,22 +31,24 @@ export async function POST(req: NextRequest) {
 
         // Delete orphaned drafts
         let cleanedCount = 0
-        for (const draft of orphanedDrafts) {
-          try {
-            await db.post.delete({
-              where: { id: draft.id }
-            })
-            cleanedCount++
-            console.log(`✅ Cleaned up orphaned draft: ${draft.id}`)
-          } catch (error) {
-            console.error(`❌ Failed to cleanup orphaned draft ${draft.id}:`, error)
-          }
+        const ids = trulyOrphaned.map((d: any) => d.id)
+        
+        const { error: deleteError } = await (db as any)
+          .from('posts')
+          .delete()
+          .in('id', ids)
+
+        if (deleteError) {
+          console.error(`❌ Failed to cleanup orphaned drafts:`, deleteError)
+        } else {
+          cleanedCount = trulyOrphaned.length
+          console.log(`✅ Cleaned up orphaned drafts: ${ids.join(', ')}`)
         }
 
         return apiSuccess({
           message: `Successfully cleaned up ${cleanedCount} orphaned drafts`,
           cleanedCount,
-          totalFound: orphanedDrafts.length
+          totalFound: trulyOrphaned.length
         })
 
       } catch (error) {

@@ -1,9 +1,30 @@
-// Posts API endpoint for content management using Supabase
+// Posts API — Supabase storage + Bundle.social publishing
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, withErrorHandling } from '@/lib/middleware'
-import { apiSuccess, apiError, validateRequest, schemas, parseQueryParams, hashtagsToString, formatPostWithHashtags } from '@/lib/api-utils'
+import { apiSuccess, apiError, validateRequest, schemas, parseQueryParams, hashtagsToString, formatPostWithHashtags, buildBundlePlatformData } from '@/lib/api-utils'
 import { db, checkUsageLimit } from '@/lib/db'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 
+const BUNDLE_API = 'https://api.bundle.social/api/v1'
+const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
+// Untyped alias — for tables not yet in Supabase generated types
+const anyDb = supabaseAdmin as any
+
+/** Get the Bundle team ID for a user */
+async function getBundleTeamId(userId: string): Promise<string | null> {
+  const { data } = await anyDb
+    .from('teams')
+    .select('bundle_social_team_id')
+    .eq('owner_id', userId)
+    .maybeSingle()
+  return (data as any)?.bundle_social_team_id || null
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET — list posts
+// ─────────────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
@@ -33,20 +54,17 @@ export async function GET(req: NextRequest) {
       if (error) throw error
 
       const total = count || 0
-
       return apiSuccess({
         posts: posts?.map(p => formatPostWithHashtags(p)) || [],
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        }
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       })
     })
   )(req)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST — create and publish/schedule via Bundle.social
+// ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
@@ -54,21 +72,25 @@ export async function POST(req: NextRequest) {
 
       try {
         const validatedData = validateRequest(schemas.createPost, body)
-        const { 
-          content, 
-          hashtags, 
-          imageUrl, 
-          images, 
-          videoUrl, 
-          videos, 
-          platform, 
-          socialAccountIds, 
-          scheduledAt, 
-          title, 
-          description 
-        } = validatedData
+        const {
+          content,
+          hashtags,
+          imageUrl,
+          images,
+          videoUrl,
+          videos,
+          platform,
+          socialAccountIds,
+          scheduledAt,
+          title,
+          description,
+          imageUploadIds,
+          videoUploadId,
+          thumbnailUploadId,
+          metadata
+        } = validatedData as any
 
-        // Check usage limits
+        // ── 1. Usage limit check ─────────────────────────────────────────────
         const canPost = await checkUsageLimit(user.id, user.subscriptionTier || 'STARTER')
         if (!canPost) {
           return apiError('Monthly post limit reached. Please upgrade your subscription.', 403)
@@ -78,30 +100,36 @@ export async function POST(req: NextRequest) {
           return apiError('At least one social account must be selected', 400)
         }
 
-        // Validate social accounts belong to user and are active
+        // ── 2. Validate social accounts ──────────────────────────────────────
         const { data: socialAccounts, error: accountsError } = await db
           .from('social_accounts')
-          .select('id, platform')
+          .select('id, platform, bundle_social_account_id')
           .in('id', socialAccountIds)
           .eq('user_id', user.id)
           .eq('is_active', true)
 
         if (accountsError) throw accountsError
-
         if (!socialAccounts || socialAccounts.length !== socialAccountIds.length) {
           return apiError('One or more selected social accounts are invalid or inactive', 400)
         }
 
-        // Determine platform
-        const postPlatform = platform || socialAccounts[0]?.platform || 'TWITTER'
-        
-        // Prepare post data
+        // ── 3. Determine platforms to publish to ─────────────────────────────
+        const platforms = [...new Set(socialAccounts.map((a: any) => a.platform))] as string[]
+        const postPlatform = platform || platforms[0] || 'TWITTER'
+
+        // ── 4. Collect upload IDs (from client or media fields) ──────────────
+        const uploadIds: string[] = []
+        if (videoUploadId) uploadIds.push(videoUploadId)
+        if (imageUploadIds && imageUploadIds.length > 0) uploadIds.push(...imageUploadIds)
+        // Thumbnail is handled per-platform in buildBundlePlatformData if needed
+
+        // ── 5. Save post to Supabase ─────────────────────────────────────────
         const postInsertData: any = {
           user_id: user.id,
-          content: content && content.trim() ? content : null,
+          content: content?.trim() || null,
           hashtags: hashtagsToString(hashtags || []),
-          image_url: imageUrl || (images && images.length > 0 ? images[0] : null),
-          video_url: videoUrl || (videos && videos.length > 0 ? videos[0] : null),
+          image_url: imageUrl || (images?.length > 0 ? images[0] : null),
+          video_url: videoUrl || (videos?.length > 0 ? videos[0] : null),
           platform: postPlatform,
           status: scheduledAt ? 'SCHEDULED' : 'DRAFT',
           title: title?.trim() || null,
@@ -109,12 +137,14 @@ export async function POST(req: NextRequest) {
           scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
           images: images ? JSON.stringify(images) : null,
           videos: videos ? JSON.stringify(videos) : null,
+          bundle_social_account_types: platforms,
+          metadata: metadata ? JSON.stringify(metadata) : null,
+          source: 'CREATED',
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         }
 
-        // Insert post
-        const { data: post, error: postError } = await db
+        const { data: post, error: postError } = await anyDb
           .from('posts')
           .insert(postInsertData)
           .select()
@@ -122,27 +152,90 @@ export async function POST(req: NextRequest) {
 
         if (postError) throw postError
 
-        // Create publications
-        const publicationsData = socialAccountIds.map((accountId: string) => ({
-          post_id: post.id,
-          social_account_id: accountId,
-          status: 'PENDING',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }))
+        // ── 6. Create publication rows ───────────────────────────────────────
+        const publicationsData = socialAccountIds.map((accountId: string) => {
+          const account = (socialAccounts as any[]).find((a: any) => a.id === accountId)
+          return {
+            post_id: post.id,
+            social_account_id: accountId,
+            platform: account?.platform || postPlatform,
+            status: 'PENDING',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        })
 
-        const { error: pubError } = await db
-          .from('post_publications')
-          .insert(publicationsData)
-
+        const { error: pubError } = await db.from('post_publications').insert(publicationsData)
         if (pubError) throw pubError
 
-        // Update usage tracking
+        // ── 7. Publish to Bundle.social ──────────────────────────────────────
+        const bundleTeamId = await getBundleTeamId(user.id)
+        
+        // ── Get the specific Bundle Account IDs for our selected platforms ──
+        const bundleAccountIds = (socialAccounts as any[])
+          .filter((a: any) => socialAccountIds.includes(a.id) && a.bundle_social_account_id)
+          .map((a: any) => a.bundle_social_account_id)
+
+        console.log(`📤 Submitting to Bundle Team: ${bundleTeamId} | Accounts: ${bundleAccountIds.join(', ')}`)
+
+        if (bundleTeamId) {
+          try {
+            const bundleBody: Record<string, any> = {
+              title: title?.trim() || `Post to ${platforms.join(', ')}`,
+              status: 'SCHEDULED', // Bundle API only supports DRAFT or SCHEDULED
+              postDate: scheduledAt ? new Date(scheduledAt).toISOString() : new Date().toISOString(),
+              teamId: bundleTeamId,
+              socialAccountTypes: platforms,
+              socialAccountIds: bundleAccountIds, // Target specific Page/Channel IDs
+              data: buildBundlePlatformData(content || '', uploadIds, platforms, metadata || {
+                title,
+                description,
+                thumbnailUploadId
+              }),
+            }
+
+            const bundleRes = await fetch(`${BUNDLE_API}/post`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': BUNDLE_KEY(),
+              },
+              body: JSON.stringify(bundleBody),
+            })
+
+            if (bundleRes.ok) {
+              const bundleData = await bundleRes.json()
+              const bundlePostId: string = bundleData.id
+
+              // Store Bundle post ID for webhook matching
+              await anyDb
+                .from('posts')
+                .update({ bundle_post_id: bundlePostId })
+                .eq('id', post.id)
+
+              // Update status from DRAFT to QUEUED/SCHEDULED
+              await anyDb
+                .from('posts')
+                .update({ status: scheduledAt ? 'SCHEDULED' : 'QUEUED' })
+                .eq('id', post.id)
+
+              console.log(`✅ Post ${post.id} submitted to Bundle as ${bundlePostId}`)
+            } else {
+              const errText = await bundleRes.text()
+              console.error(`⚠️ Bundle post submission failed (${bundleRes.status}):`, errText)
+              // Post stays as DRAFT — user can retry
+            }
+          } catch (bundleErr) {
+            console.error('⚠️ Bundle.social post call failed (non-fatal):', bundleErr)
+          }
+        } else {
+          console.warn('⚠️ No Bundle team ID found for user — post saved as DRAFT only')
+        }
+
+        // ── 8. Update usage tracking ─────────────────────────────────────────
         const currentMonth = new Date().getMonth() + 1
         const currentYear = new Date().getFullYear()
-
-        // Upsert usage tracking in Supabase
-        const { data: usageEntry } = await db
+        const { data: usageEntry } = await anyDb
           .from('usage_tracking')
           .select('id, posts_used')
           .eq('user_id', user.id)
@@ -151,40 +244,23 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (usageEntry) {
-          await db
-            .from('usage_tracking')
-            .update({ posts_used: (usageEntry.posts_used || 0) + 1 })
-            .eq('id', usageEntry.id)
+          await anyDb.from('usage_tracking').update({ posts_used: ((usageEntry as any).posts_used || 0) + 1 }).eq('id', (usageEntry as any).id)
         } else {
-          await db
-            .from('usage_tracking')
-            .insert({
-              user_id: user.id,
-              month: currentMonth,
-              year: currentYear,
-              posts_used: 1
-            })
+          await anyDb.from('usage_tracking').insert({ user_id: user.id, month: currentMonth, year: currentYear, posts_used: 1 })
         }
 
-        // Fetch complete post with publications
-        const { data: completePost, error: fetchError } = await db
+        // ── 9. Return complete post ──────────────────────────────────────────
+        const { data: completePost, error: fetchError } = await anyDb
           .from('posts')
-          .select(`
-            *,
-            publications:post_publications(
-              *,
-              social_account:social_accounts(*)
-            ),
-            analytics:post_analytics(*)
-          `)
-          .eq('id', post.id)
+          .select(`*, publications:post_publications(*, social_account:social_accounts(*)), analytics:post_analytics(*)`)
+          .eq('id', (post as any).id)
           .single()
 
         if (fetchError) throw fetchError
 
         return apiSuccess({ post: formatPostWithHashtags(completePost) }, 201)
       } catch (error) {
-        console.error('POST /api/posts - Error:', error)
+        console.error('POST /api/posts error:', error)
         return apiError(error instanceof Error ? error.message : 'Invalid request')
       }
     })

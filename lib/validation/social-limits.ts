@@ -55,6 +55,64 @@ export function validatePostContent(
       errors.push('YouTube requires at least one video')
     }
 
+    if (platformId === 'INSTAGRAM') {
+      const igData = (content as any).instagramData || {}
+      
+      // Character Limit override for IG (Bundle.social says 2000 in specific docs)
+      if (content.text.length > 2000) {
+        errors.push(`Instagram caption exceeds 2,000 characters`)
+      }
+
+      // Collaborators
+      if (igData.collaborators && igData.collaborators.length > 3) {
+        errors.push('Instagram supports a maximum of 3 collaborators')
+      }
+
+      // Tagged Users
+      if (igData.taggedUsers && igData.taggedUsers.length > 20) {
+        errors.push('Instagram supports a maximum of 20 tags per media')
+      }
+
+      // Mutual Exclusion
+      if (igData.autoFitImage && igData.autoCropImage) {
+        errors.push('Auto-Fit and Auto-Crop are mutually exclusive')
+      }
+
+      // Story constraints
+      if (igData.type === 'STORY') {
+        if (igData.collaborators && igData.collaborators.length > 0) {
+          errors.push('Instagram Stories do not support collaborators')
+        }
+        if (igData.locationId) {
+          errors.push('Instagram Stories do not support location tagging')
+        }
+      }
+
+      // Reel type constraints
+      if (igData.type === 'REEL' && (!content.media || !content.media.some(m => m.type === 'VIDEO'))) {
+        errors.push('Instagram Reels must be videos')
+      }
+    }
+
+    if (platformId === 'LINKEDIN') {
+      const liData = (content as any).linkedinData || {}
+      
+      // Character Limit override for LI (3000 chars)
+      if (content.text.length > 3000) {
+        errors.push(`LinkedIn post exceeds 3,000 characters`)
+      }
+
+      // Media Title
+      if (liData.mediaTitle && liData.mediaTitle.length > 200) {
+        errors.push('LinkedIn media title exceeds 200 characters')
+      }
+
+      // Link Preview
+      if (liData.link && liData.link.length > 2048) {
+        errors.push('LinkedIn link preview URL exceeds 2,048 characters')
+      }
+    }
+
     results[platformId] = {
       isValid: errors.length === 0,
       errors,

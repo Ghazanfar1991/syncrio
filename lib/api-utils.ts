@@ -25,7 +25,7 @@ export function validateRequest<T>(schema: z.ZodSchema<T>, data: any): T {
         const path = e.path.length > 0 ? e.path.join('.') : 'root'
         return `${path}: ${e.message}`
       }) || ['Unknown validation error']
-      throw new Error(`Validation error: ${errorMessages.join(', ')}`)
+      throw new Error(errorMessages.join(', '))
     }
     throw error
   }
@@ -56,11 +56,15 @@ export const schemas = {
       return !isNaN(date.getTime())
     }, 'Invalid date format').optional(),
     title: z.string().max(100).optional(),
-    description: z.string().max(5000).optional()
+    description: z.string().max(5000).optional(),
+    imageUploadIds: z.array(z.string()).nullable().optional(),
+    videoUploadId: z.string().nullable().optional(),
+    thumbnailUploadId: z.string().nullable().optional(),
+    metadata: z.record(z.any()).optional(),
   }).refine((data) => {
     const hasContent = data.content && data.content.trim().length > 0
-    const hasVideo = (data.videoUrl && data.videoUrl.length > 0) || (data.videos && data.videos.length > 0)
-    const hasImage = (data.imageUrl && data.imageUrl.length > 0) || (data.images && data.images.length > 0)
+    const hasVideo = (data.videoUrl && data.videoUrl.length > 0) || (data.videos && data.videos.length > 0) || (data.videoUploadId && data.videoUploadId.length > 0)
+    const hasImage = (data.imageUrl && data.imageUrl.length > 0) || (data.images && data.images.length > 0) || (data.imageUploadIds && data.imageUploadIds.length > 0)
     return hasContent || hasVideo || hasImage
   }, {
     message: "Post must have either text content, video, or image"
@@ -73,7 +77,10 @@ export const schemas = {
     images: z.array(z.string()).optional(),
     videoUrl: z.string().optional(),
     videos: z.array(z.string()).optional(),
-    status: z.enum(['DRAFT', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'FAILED']).optional(),
+    imageUploadIds: z.array(z.string()).nullable().optional(),
+    videoUploadId: z.string().nullable().optional(),
+    thumbnailUploadId: z.string().nullable().optional(),
+    status: z.enum(['DRAFT', 'APPROVED', 'SCHEDULED', 'PUBLISHED', 'FAILED', 'QUEUED']).optional(),
     scheduledAt: z.string().refine((val) => {
       if (!val) return true
       const date = new Date(val)
@@ -102,6 +109,84 @@ export const schemas = {
   updateSubscription: z.object({
     tier: z.string()
   })
+}
+
+/** Build per-platform post data for Bundle.social postCreate/Update */
+export function buildBundlePlatformData(
+  content: string,
+  uploadIds: string[],
+  platforms: string[],
+  metadata: any = {}
+): Record<string, any> {
+  const data: Record<string, any> = {}
+
+  for (const platform of platforms) {
+    const platformUploadIds = [...uploadIds]
+    
+    switch (platform) {
+      case 'INSTAGRAM':
+        data.INSTAGRAM = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'FACEBOOK':
+        data.FACEBOOK = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'TWITTER':
+        data.TWITTER = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'LINKEDIN':
+        data.LINKEDIN = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'TIKTOK':
+        data.TIKTOK = { 
+          text: content, 
+          uploadIds: platformUploadIds, 
+          privacy: metadata.privacy || 'PUBLIC_TO_EVERYONE',
+          title: metadata.title || undefined
+        }
+        break
+      case 'YOUTUBE':
+        data.YOUTUBE = { 
+          title: metadata.title || 'Untitled Video',
+          description: metadata.description || content || '',
+          uploadIds: platformUploadIds, 
+          type: metadata.type || 'VIDEO', 
+          madeForKids: metadata.madeForKids !== undefined ? metadata.madeForKids : false,
+          privacyStatus: metadata.privacyStatus || 'public'
+        }
+        if (metadata.thumbnailUploadId) {
+          data.YOUTUBE.uploadIds = [metadata.thumbnailUploadId, ...platformUploadIds]
+        }
+        break
+      case 'THREADS':
+        data.THREADS = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'PINTEREST':
+        data.PINTEREST = { note: content, uploadIds: platformUploadIds }
+        break
+      case 'REDDIT':
+        data.REDDIT = { text: content, title: metadata.title || content.substring(0, 300) }
+        break
+      case 'MASTODON':
+        data.MASTODON = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'BLUESKY':
+        data.BLUESKY = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'DISCORD':
+        data.DISCORD = { content, uploadIds: platformUploadIds }
+        break
+      case 'SLACK':
+        data.SLACK = { text: content, uploadIds: platformUploadIds }
+        break
+      case 'GOOGLE_BUSINESS':
+        data.GOOGLE_BUSINESS = { summary: content, uploadIds: platformUploadIds }
+        break
+      default:
+        data[platform] = { text: content, uploadIds: platformUploadIds }
+    }
+  }
+
+  return data
 }
 
 // Pagination helper

@@ -145,10 +145,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(newTheme)
   }
 
-  // Prevent hydration mismatch
-  if (!mounted) {
-    return <div className="min-h-screen bg-white dark:bg-neutral-950" />
-  }
+
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>

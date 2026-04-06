@@ -1,121 +1,46 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { withAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError, hashtagsFromString } from '@/lib/api-utils'
 import { db } from '@/lib/db'
-import { postTweet, postTweetWithVideo } from '@/lib/social/twitter'
-import { postToLinkedIn, postToLinkedInWithVideo } from '@/lib/social/linkedin'
-import { createInstagramMedia, createInstagramVideo, createInstagramImage, getMediaType, getInstagramAspectRatioGuidance } from '@/lib/social/instagram'
-import { uploadYouTubeVideo } from '@/lib/social/youtube'
-import { TokenManager } from '@/lib/social/token-manager'
-import { AccountType } from '@prisma/client'
-import {
-  postToFacebookPage,
-  getUserPages,
-  uploadUnpublishedPhoto,
-  createFeedWithAttachedMedia,
-  postVideoToFacebookPage,
-  uploadUnpublishedPhotoBinary,
-  uploadPhotoBinaryPublished,
-} from '@/lib/social/facebook'
 
-// Minimal local types to improve type safety without changing behavior
-type PostPublicationLite = { id: string; status: string; socialAccountId: string }
-type PublishResult = {
-  platform: string
-  accountName: string | null
-  success: boolean
-  platformPostId?: string | null
-  error?: string
-  needsReconnection?: boolean
-}
+const BUNDLE_API = 'https://api.bundle.social/api/v1'
+const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
 
-// Helper function to combine images from both imageUrl and images columns
-function combinePostImages(post: any): string | string[] | undefined {
-  const allImages: string[] = []
-  
-  // Add imageUrl if it exists (first image)
-  if (post.imageUrl) {
-    allImages.push(post.imageUrl)
-  }
-  
-  // Add images from images field if it exists
-  if (post.images) {
-    try {
-      const imagesArray = JSON.parse(post.images)
-      if (Array.isArray(imagesArray)) {
-        allImages.push(...imagesArray)
-      }
-    } catch (parseError) {
-      console.warn('Failed to parse images field:', parseError)
-    }
-  }
-  
-  // Remove duplicates and return
-  const uniqueImages = [...new Set(allImages)]
-  
-  if (uniqueImages.length === 0) {
-    return undefined
-  } else if (uniqueImages.length === 1) {
-    return uniqueImages[0]
-  } else {
-    return uniqueImages
-  }
-}
+/** Build per-platform post data for Bundle.social postCreate */
+function buildBundlePlatformData(
+  content: string,
+  uploadIds: string[],
+  platforms: string[]
+): Record<string, any> {
+  const data: Record<string, any> = {}
 
-// Helper function to combine videos from both videoUrl and videos columns
-function combinePostVideos(post: any): string | string[] | undefined {
-  const allVideos: string[] = []
-
-  // Add videoUrl if it exists (first video)
-  if (post.videoUrl) {
-    allVideos.push(post.videoUrl)
-  }
-
-  // Add videos from videos field if it exists
-  if (post.videos) {
-    try {
-      const videosArray = JSON.parse(post.videos)
-      if (Array.isArray(videosArray)) {
-        allVideos.push(...videosArray)
-      }
-    } catch (parseError) {
-      console.warn('Failed to parse videos field:', parseError)
+  for (const platform of platforms) {
+    switch (platform) {
+      case 'TIKTOK':
+        data.TIKTOK = { text: content, uploadIds, privacy: 'PUBLIC_TO_EVERYONE' }
+        break
+      case 'YOUTUBE':
+        data.YOUTUBE = { text: content, uploadIds, type: 'VIDEO', madeForKids: false }
+        break
+      case 'REDDIT':
+        data.REDDIT = { text: content, title: content.substring(0, 300) }
+        break
+      default:
+        data[platform] = { text: content, uploadIds }
     }
   }
 
-  // Remove duplicates and return
-  const uniqueVideos = [...new Set(allVideos)]
-
-  if (uniqueVideos.length === 0) {
-    return undefined
-  } else if (uniqueVideos.length === 1) {
-    return uniqueVideos[0]
-  } else {
-    return uniqueVideos
-  }
+  return data
 }
 
-// Ensure an absolute http(s) URL for external services (e.g., Facebook Graph API)
-function resolveHttpUrl(maybeUrl?: string): string | undefined {
-  if (!maybeUrl) return undefined
-  try {
-    const u = new URL(maybeUrl)
-    if (u.protocol === 'http:' || u.protocol === 'https:') return u.toString()
-    return undefined
-  } catch {
-    // Not a fully qualified URL; try to resolve relative path with app base URL
-    if (maybeUrl.startsWith('/')) {
-      const base = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL
-      if (base) {
-        try {
-          return new URL(maybeUrl, base).toString()
-        } catch {
-          return undefined
-        }
-      }
-    }
-    return undefined
-  }
+/** Get the Bundle team ID for a user */
+async function getBundleTeamId(userId: string): Promise<string | null> {
+  const { data } = await (db as any)
+    .from('teams')
+    .select('bundle_social_team_id')
+    .eq('owner_id', userId)
+    .maybeSingle()
+  return (data as any)?.bundle_social_team_id || null
 }
 
 export async function POST(
@@ -125,611 +50,112 @@ export async function POST(
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       try {
-        console.log('🚀 PUBLISH ENDPOINT: Starting publish process...')
         const { id: postId } = await params
-        console.log('🚀 PUBLISH ENDPOINT: Post ID:', postId)
-        console.log('🚀 PUBLISH ENDPOINT: User ID:', user.id)
+        console.log('🚀 PUBLISH ENDPOINT: Publishing post', postId, 'for user', user.id)
 
-        // Get the post and verify ownership
-        console.log('🚀 PUBLISH ENDPOINT: Fetching post from database...')
-        const post = await db.post.findFirst({
-          where: {
-            id: postId,
-            userId: user.id
-          },
-          include: {
-            publications: {
-              include: {
-                socialAccount: true
-              }
-            }
-          }
-        })
+        // 1. Get the post and publications from Supabase
+        const { data: post, error: postError } = await (db as any)
+          .from('posts')
+          .select('*, publications:post_publications(*, social_account:social_accounts(*))')
+          .eq('id', postId)
+          .eq('user_id', user.id)
+          .maybeSingle()
 
-        console.log('🚀 PUBLISH ENDPOINT: Post found:', !!post)
-        if (post) {
-          console.log('🚀 PUBLISH ENDPOINT: Post status:', post.status)
-          console.log('🚀 PUBLISH ENDPOINT: Post publications count:', post.publications?.length || 0)
-          console.log('🚀 PUBLISH ENDPOINT: Post content length:', post.content?.length || 0)
-          console.log('🚀 PUBLISH ENDPOINT: Post has image:', !!post.imageUrl)
-        }
-
-        if (!post) {
-          console.log('❌ PUBLISH ENDPOINT: Post not found')
+        if (postError || !post) {
+          console.error('❌ Post not found or error:', postError)
           return apiError('Post not found', 404)
         }
 
         if (post.status === 'PUBLISHED') {
-          console.log('❌ PUBLISH ENDPOINT: Post is already published')
           return apiError('Post is already published', 400)
         }
 
-        // Check if post has publications (social accounts selected)
-        if (!post.publications || post.publications.length === 0) {
-          console.log('❌ PUBLISH ENDPOINT: No publications found for post')
-          
-          // Let's check if there are any publications in the database for this post
-          const dbPublications: PostPublicationLite[] = await db.postPublication.findMany({
-            where: { postId: postId },
-            select: { id: true, status: true, socialAccountId: true }
-          })
-          console.log('🚀 PUBLISH ENDPOINT: Database publications found:', dbPublications.length)
-          if (dbPublications.length > 0) {
-            console.log('🚀 PUBLISH ENDPOINT: Database publications:', dbPublications.map((p) => ({
-              id: p.id,
-              status: p.status,
-              socialAccountId: p.socialAccountId
-            })))
-          }
-          
-          return apiError('No social accounts selected for this post. Please select at least one social account before publishing.', 400)
-        }
-
-        // Log each publication
-        console.log('🚀 PUBLISH ENDPOINT: Publications found:')
-        post.publications.forEach((pub: any, index: number) => {
-          console.log(`  ${index + 1}. Platform: ${pub.socialAccount.platform}`)
-          console.log(`     Account: ${pub.socialAccount.accountName}`)
-          console.log(`     Status: ${pub.status}`)
-          console.log(`     Account ID: ${pub.socialAccount.id}`)
-          console.log(`     Account Active: ${pub.socialAccount.isActive}`)
-        })
-
-        // Prepare content with hashtags
-        const hashtags = hashtagsFromString(post.hashtags)
+        // 2. Prepare content
+        const hashtags = hashtagsFromString(post.hashtags || '')
         const contentWithHashtags = `${post.content || ''}\n\n${hashtags.join(' ')}`
 
-        console.log('🚀 PUBLISH ENDPOINT: Content prepared:')
-        console.log('  - Original content length:', post.content?.length || 0)
-        console.log('  - Hashtags count:', hashtags.length)
-        console.log('  - Final content length:', contentWithHashtags.length)
-        console.log('  - YouTube title:', post.title || 'No title')
-        console.log('  - YouTube description:', post.description || 'No description')
+        // 3. Determine active social accounts and platforms
+        const activePubs = (post.publications || []).filter(
+          (pub: any) => pub.social_account && pub.social_account.is_active
+        )
 
-        const publishResults: PublishResult[] = []
-        let hasErrors = false
+        if (activePubs.length === 0) {
+          return apiError('No active social accounts selected for this post', 400)
+        }
 
-        console.log(`🚀 PUBLISH ENDPOINT: Starting to publish to ${post.publications.length} social accounts`)
+        const platforms = [...new Set(activePubs.map((p: any) => p.social_account.platform))] as string[]
+        console.log('🚀 PUBLISH ENDPOINT: Platforms to publish:', platforms)
 
-        // Publish to each social account
-        for (const publication of post.publications) {
-          const account = publication.socialAccount
-          console.log(`\n🚀 PUBLISH ENDPOINT: Publishing to ${account.platform} (${account.accountName})...`)
+        // 4. Resolve Bundle Social credentials
+        const teamId = await getBundleTeamId(user.id)
+        if (!teamId) {
+          return apiError('Please connect your social accounts via the integration portal first.', 400)
+        }
 
+        // 5. Build media data (collect upload IDs if available)
+        const uploadIds: string[] = []
+        if (post.bundle_upload_ids) {
           try {
-            // Validate and refresh token using TokenManager
-            console.log(`🚀 PUBLISH ENDPOINT: Validating token for ${account.platform}...`)
-            const tokenValidation = await TokenManager.validateAndRefresh(
-              user.id, 
-              account.platform, 
-              account.accountId
-            )
-
-            console.log(`🚀 PUBLISH ENDPOINT: Token validation result:`, {
-              isValid: tokenValidation.isValid,
-              hasAccessToken: !!tokenValidation.accessToken,
-              needsReconnection: tokenValidation.needsReconnection,
-              error: tokenValidation.error
-            })
-
-            if (!tokenValidation.isValid) {
-              if (tokenValidation.needsReconnection) {
-                throw new Error(`Account needs reconnection: ${tokenValidation.error}`)
-              } else {
-                throw new Error(`Token validation failed: ${tokenValidation.error}`)
-              }
-            }
-
-            let result
-            let platformPostId = null
-
-            switch (account.platform) {
-              case 'FACEBOOK': {
-                console.log('🚀 PUBLISH ENDPOINT: Posting to Facebook...')
-                if (!tokenValidation.accessToken) {
-                  throw new Error('No valid Facebook token available')
-                }
-
-                // Resolve target Page and tokens
-                let pageId: string | undefined
-                let pageAccessToken: string | undefined
-                let userAccessToken: string | undefined
-
-                const selectedPageId = (account as any)?.metadata?.selectedPageId
-                const isBusiness = account.accountType === AccountType.BUSINESS
-
-                if (isBusiness) {
-                  // Page-level connection: accountId is the Page id and accessToken is the Page token
-                  pageId = account.accountId
-                  pageAccessToken = tokenValidation.accessToken
-                } else {
-                  // User-level connection: need a Page id. Prefer selectedPageId, else auto-pick if exactly one.
-                  userAccessToken = tokenValidation.accessToken
-
-                  if (selectedPageId) {
-                    pageId = selectedPageId
-                  } else {
-                    // Try to find a connected Page account for this user and use it if exactly one exists
-                    try {
-                      const pageAccounts = await db.socialAccount.findMany({
-                        where: {
-                          userId: user.id,
-                          platform: 'FACEBOOK' as any,
-                          accountType: AccountType.BUSINESS,
-                          isActive: true,
-                        },
-                        orderBy: { createdAt: 'desc' },
-                      })
-                      if (pageAccounts.length === 1) {
-                        pageId = pageAccounts[0].accountId
-                        pageAccessToken = pageAccounts[0].accessToken
-                        userAccessToken = undefined
-                        console.log('🚀 PUBLISH ENDPOINT: Using connected Page account:', pageAccounts[0].accountName)
-                      } else if (pageAccounts.length > 1) {
-                        throw new Error('Multiple Facebook Pages connected. Select one in Integrations or assign this post to a specific Page.')
-                      }
-                    } catch (e) {
-                      console.warn('⚠️ Failed to resolve connected Page account fallback:', e)
-                    }
-
-                    try {
-                      if (userAccessToken) {
-                        const pages = await getUserPages(userAccessToken)
-                        if (pages.length === 1) {
-                          pageId = pages[0].id
-                        }
-                      }
-                    } catch (e) {
-                      console.warn('⚠️ Failed to list Facebook pages for auto-pick:', e)
-                    }
-                  }
-
-                  if (!pageId) {
-                    throw new Error('No Facebook Page selected. Connect a Page or select one in Integrations.')
-                  }
-                }
-
-                // Prepare media
-                // Prepare media arrays
-                const fbImages = combinePostImages(post)
-                const fbVideos = combinePostVideos(post)
-
-                // Optional scheduling: if you have a scheduledAt field, convert to unix seconds
-                const scheduledPublishTime = undefined as number | undefined
-
-                if (fbVideos) {
-                  const videoUrlRaw = Array.isArray(fbVideos) ? fbVideos[0] : fbVideos
-                  const videoUrl = resolveHttpUrl(videoUrlRaw)
-                  if (!videoUrl) {
-                    throw new Error('Facebook video URL must be a public http(s) URL')
-                  }
-                  const vRes = await postVideoToFacebookPage(pageId!, videoUrl, {
-                    description: contentWithHashtags,
-                    pageAccessToken,
-                    userAccessToken,
-                    scheduledPublishTime,
-                  })
-                  platformPostId = vRes.id
-                } else if (Array.isArray(fbImages) && fbImages.length > 1) {
-                  // Multi-photo post via attached_media (up to 10)
-                  const candidates = Array.isArray(fbImages) ? fbImages.slice(0, 10) : []
-                  const mediaFbids: string[] = []
-                  for (const c of candidates) {
-                    const val = typeof c === 'string' ? c : undefined
-                    if (!val) continue
-                    if (val.startsWith('data:image') || /^[A-Za-z0-9+/=]+$/.test(val)) {
-                      try {
-                        const up = await uploadUnpublishedPhotoBinary(pageId!, val, {
-                          pageAccessToken,
-                          userAccessToken,
-                          caption: undefined,
-                          scheduledPublishTime,
-                        })
-                        mediaFbids.push(up.id)
-                      } catch (e) {
-                        console.warn('⚠️ Skipping base64 image upload:', (e as any)?.message || e)
-                      }
-                    } else {
-                      const url = resolveHttpUrl(val)
-                      if (url) {
-                        try {
-                          const up = await uploadUnpublishedPhoto(pageId!, url, {
-                            pageAccessToken,
-                            userAccessToken,
-                            caption: undefined,
-                            scheduledPublishTime,
-                          })
-                          mediaFbids.push(up.id)
-                        } catch (e) {
-                          console.warn('⚠️ Skipping URL image upload:', (e as any)?.message || e)
-                        }
-                      }
-                    }
-                  }
-                  if (mediaFbids.length === 0) {
-                    const feed = await postToFacebookPage({
-                      pageId: pageId!,
-                      message: contentWithHashtags,
-                      pageAccessToken,
-                      userAccessToken,
-                      scheduledPublishTime,
-                    })
-                    platformPostId = feed.id
-                  } else {
-                    const feed = await createFeedWithAttachedMedia(pageId!, mediaFbids, {
-                      message: contentWithHashtags,
-                      pageAccessToken,
-                      userAccessToken,
-                      scheduledPublishTime,
-                    })
-                    platformPostId = feed.id
-                  }
-                } else {
-                  // Single photo or text-only
-                  const rawImage = Array.isArray(fbImages) ? fbImages[0] : fbImages
-                  if (typeof rawImage === 'string' && (rawImage.startsWith('data:image') || /^[A-Za-z0-9+/=]+$/.test(rawImage))) {
-                    const photo = await uploadPhotoBinaryPublished(pageId!, rawImage, {
-                      pageAccessToken,
-                      userAccessToken,
-                      caption: contentWithHashtags,
-                    })
-                    platformPostId = photo.post_id || photo.id
-                  } else {
-                    const imageUrl = resolveHttpUrl(typeof rawImage === 'string' ? rawImage : undefined)
-                    if (rawImage && !imageUrl) {
-                      console.warn('⚠️ PUBLISH ENDPOINT: Facebook image URL is not a public http(s) URL; posting without image:', rawImage)
-                    }
-                    const fbRes = await postToFacebookPage({
-                      pageId: pageId!,
-                      message: contentWithHashtags,
-                      linkUrl: undefined,
-                      imageUrl,
-                      scheduledPublishTime,
-                      pageAccessToken,
-                      userAccessToken,
-                    })
-                    platformPostId = fbRes.id
-                  }
-                }
-                console.log(`✅ PUBLISH ENDPOINT: Facebook post successful! ID: ${platformPostId}`)
-                break
-              }
-              case 'TWITTER':
-                console.log(`🚀 PUBLISH ENDPOINT: ===== TWITTER POSTING START =====`)
-                console.log(`🚀 PUBLISH ENDPOINT: Posting to Twitter...`)
-                console.log(`🚀 PUBLISH ENDPOINT: Content with hashtags:`, contentWithHashtags.substring(0, 100) + '...')
-                console.log(`🚀 PUBLISH ENDPOINT: Content length:`, contentWithHashtags.length)
-
-                const twitterImages = combinePostImages(post)
-                const twitterVideos = combinePostVideos(post)
-
-                console.log(`🚀 PUBLISH ENDPOINT: Twitter media:`, {
-                  hasImages: !!twitterImages,
-                  imageCount: Array.isArray(twitterImages) ? twitterImages.length : 1,
-                  hasVideos: !!twitterVideos,
-                  videoCount: Array.isArray(twitterVideos) ? twitterVideos.length : 1
-                })
-                console.log(`🚀 PUBLISH ENDPOINT: User ID:`, user.id)
-                console.log(`🚀 PUBLISH ENDPOINT: Account ID:`, account.id)
-                console.log(`🚀 PUBLISH ENDPOINT: Access token length:`, tokenValidation.accessToken?.length || 'N/A')
-
-                if (!tokenValidation.accessToken) {
-                  throw new Error('No valid Twitter token available')
-                }
-                const accessToken: string = tokenValidation.accessToken
-
-                // Use video-enabled Twitter posting
-                const twitterVideoToPost = Array.isArray(twitterVideos) ? twitterVideos[0] : twitterVideos
-                const twitterImageToPost = Array.isArray(twitterImages) ? twitterImages[0] : twitterImages
-
-                console.log(`🚀 PUBLISH ENDPOINT: Twitter media to post:`, {
-                  videoUrl: twitterVideoToPost ? twitterVideoToPost.substring(0, 50) + '...' : 'none',
-                  imageUrl: twitterImageToPost ? twitterImageToPost.substring(0, 50) + '...' : 'none'
-                })
-
-                result = await postTweetWithVideo(
-                  accessToken,
-                  contentWithHashtags,
-                  twitterVideoToPost, // Video URL
-                  twitterImageToPost, // Image URL (only used if no video)
-                  user.id,
-                  account.id
-                )
-
-                platformPostId = result.id
-                console.log(`✅ PUBLISH ENDPOINT: Twitter post successful! ID: ${platformPostId}`)
-                console.log(`🚀 PUBLISH ENDPOINT: ===== TWITTER POSTING COMPLETED =====`)
-                break
-
-              case 'LINKEDIN':
-                console.log('🚀 PUBLISH ENDPOINT: Posting to LinkedIn...')
-                if (!tokenValidation.accessToken) {
-                  throw new Error('No valid LinkedIn token available')
-                }
-
-                // Use helper function to combine images from both columns
-                const imagesToPost = combinePostImages(post)
-                const videosToPost = combinePostVideos(post)
-
-                console.log(`🚀 PUBLISH ENDPOINT: LinkedIn media:`, {
-                  hasImages: !!imagesToPost,
-                  imageCount: Array.isArray(imagesToPost) ? imagesToPost.length : 1,
-                  hasVideos: !!videosToPost,
-                  videoCount: Array.isArray(videosToPost) ? videosToPost.length : 1
-                })
-
-                // Use video-enabled LinkedIn posting with full support for multiple videos
-                console.log(`🚀 PUBLISH ENDPOINT: LinkedIn media to post:`, {
-                  videoUrls: videosToPost ? (Array.isArray(videosToPost) ? videosToPost.map(v => v.substring(0, 50) + '...') : [videosToPost.substring(0, 50) + '...']) : [],
-                  imageUrls: imagesToPost ? (Array.isArray(imagesToPost) ? imagesToPost.map(i => i.substring(0, 50) + '...') : [imagesToPost.substring(0, 50) + '...']) : []
-                })
-
-                result = await postToLinkedInWithVideo(
-                  tokenValidation.accessToken,
-                  contentWithHashtags,
-                  account.accountId,
-                  videosToPost, // Support multiple videos
-                  imagesToPost  // Support multiple images (only used if no videos)
-                )
-
-                platformPostId = result.id
-                console.log(`✅ PUBLISH ENDPOINT: LinkedIn post successful! ID: ${platformPostId}`)
-                break
-
-              case 'INSTAGRAM':
-                console.log('🚀 PUBLISH ENDPOINT: Posting to Instagram...')
-
-                const instagramImages = combinePostImages(post)
-                const instagramVideos = combinePostVideos(post)
-
-                console.log(`🚀 PUBLISH ENDPOINT: Instagram media:`, {
-                  hasImages: !!instagramImages,
-                  imageCount: Array.isArray(instagramImages) ? instagramImages.length : 1,
-                  hasVideos: !!instagramVideos,
-                  videoCount: Array.isArray(instagramVideos) ? instagramVideos.length : 1
-                })
-
-                if (!tokenValidation.accessToken) {
-                  throw new Error('No valid Instagram token available')
-                }
-
-                // Instagram doesn't support mixed media (images + videos) in one post
-                // Prioritize video over images, but warn user about mixed media
-                if (instagramVideos && instagramImages) {
-                  console.log('⚠️ Mixed media detected (images + videos). Instagram only supports one media type per post.')
-                  console.log('📹 Prioritizing video over images for this post.')
-                  console.log('💡 Tip: Create separate posts for images and videos for better engagement.')
-                }
-
-                if (instagramVideos) {
-                  console.log('📹 Posting video to Instagram (as REEL - VIDEO type deprecated)...')
-                  const videoUrl = Array.isArray(instagramVideos) ? instagramVideos[0] : instagramVideos
-
-                  result = await createInstagramVideo(
-                    tokenValidation.accessToken,
-                    videoUrl,
-                    contentWithHashtags,
-                    user.id
-                  )
-                } else if (instagramImages) {
-                  console.log('📸 Posting image(s) to Instagram...')
-
-                  // Handle single image or multiple images (carousel)
-                  result = await createInstagramImage(
-                    tokenValidation.accessToken,
-                    instagramImages, // Pass the full array or single string
-                    contentWithHashtags,
-                    user.id
-                  )
-                } else {
-                  throw new Error('Instagram posts require either an image or video')
-                }
-
-                platformPostId = result.id
-                console.log(`✅ PUBLISH ENDPOINT: Instagram post successful! ID: ${platformPostId}`)
-                break
-
-              case 'YOUTUBE':
-                console.log('🚀 PUBLISH ENDPOINT: Posting to YouTube...')
-                if (!tokenValidation.accessToken) {
-                  throw new Error('No valid YouTube token available')
-                }
-
-                // Get video content for YouTube
-                const youtubeVideos = combinePostVideos(post)
-                console.log(`🚀 PUBLISH ENDPOINT: YouTube videos:`, {
-                  hasVideos: !!youtubeVideos,
-                  videoCount: Array.isArray(youtubeVideos) ? youtubeVideos.length : 1
-                })
-
-                if (!youtubeVideos) {
-                  throw new Error('YouTube posts require video content')
-                }
-
-                // Use the first video if multiple videos are provided
-                const videoToUpload = Array.isArray(youtubeVideos) ? youtubeVideos[0] : youtubeVideos
-
-                // Get thumbnail URL (use first image if available)
-                const thumbnailUrl = post.imageUrl || (post.images && Array.isArray(post.images) && post.images.length > 0 ? post.images[0] : undefined)
-
-                // Use post title and description for YouTube, fallback to content
-                const youtubeTitle = post.title || contentWithHashtags.substring(0, 100) || 'Untitled Video'
-                const youtubeDescription = post.description || contentWithHashtags || 'No description'
-
-                result = await uploadYouTubeVideo(
-                  tokenValidation.accessToken,
-                  videoToUpload,
-                  youtubeTitle, // Use dedicated title field
-                  youtubeDescription, // Use dedicated description field
-                  thumbnailUrl // Thumbnail URL
-                )
-                platformPostId = result.id
-                console.log(`✅ PUBLISH ENDPOINT: YouTube video uploaded successfully! ID: ${platformPostId}`)
-                break
-
-              default:
-                throw new Error(`Unsupported platform: ${account.platform}`)
-            }
-
-            // Update publication status to published
-            console.log(`🚀 PUBLISH ENDPOINT: Updating publication status for ${account.platform}...`)
-            await db.postPublication.update({
-              where: { id: publication.id },
-              data: {
-                status: 'PUBLISHED',
-                platformPostId,
-                publishedAt: new Date()
-              }
-            })
-
-            publishResults.push({
-              platform: account.platform,
-              accountName: account.accountName,
-              success: true,
-              platformPostId
-            })
-
-            console.log(`✅ PUBLISH ENDPOINT: Successfully published to ${account.platform}`)
-
-          } catch (error) {
-            hasErrors = true
-            console.error(`❌ PUBLISH ENDPOINT: Failed to publish to ${account.platform}:`, error)
-
-            // Determine if this is a reconnection issue
-            let errorMessage = error instanceof Error ? error.message : 'Unknown error'
-
-            // Add helpful guidance for Instagram aspect ratio errors
-            if (account.platform === 'INSTAGRAM' && errorMessage.includes('aspect ratio')) {
-              console.log(getInstagramAspectRatioGuidance())
-              errorMessage += '\n\n💡 See console for Instagram aspect ratio requirements.'
-            }
-
-            const needsReconnection = errorMessage.includes('needs reconnection') ||
-                                    errorMessage.includes('permission') ||
-                                    errorMessage.includes('ACCESS_DENIED')
-
-            // Update publication status to failed
-            await db.postPublication.update({
-              where: { id: publication.id },
-              data: {
-                status: 'FAILED',
-                errorMessage: errorMessage
-              }
-            })
-
-            publishResults.push({
-              platform: account.platform,
-              accountName: account.accountName,
-              success: false,
-              error: errorMessage,
-              needsReconnection
-            })
-          }
+            const parsed = JSON.parse(post.bundle_upload_ids)
+            if (Array.isArray(parsed)) uploadIds.push(...parsed)
+          } catch (e) {}
         }
 
-        console.log(`🚀 PUBLISH ENDPOINT: Publishing completed. Results:`, publishResults)
+        // 6. Call Bundle Social API to Publish
+        const bundleBody = {
+          teamId,
+          socialAccountTypes: platforms,
+          data: buildBundlePlatformData(contentWithHashtags, uploadIds, platforms),
+        }
 
-        // Calculate success metrics first
-        const successCount = publishResults.filter(r => r.success).length
-        const totalCount = publishResults.length
-        const reconnectionNeeded = publishResults.some(r => !r.success && r.needsReconnection)
-
-        console.log(`🚀 PUBLISH ENDPOINT: Success metrics:`, {
-          successCount,
-          totalCount,
-          reconnectionNeeded
-        })
-
-        // Update post status based on results - only mark as PUBLISHED if at least one platform succeeded
-        const postStatus = successCount > 0 ? 'PUBLISHED' : 'FAILED'
-        console.log(`🚀 PUBLISH ENDPOINT: Updating post status to: ${postStatus}`)
-        
-        const updatedPost = await db.post.update({
-          where: { id: postId },
-          data: {
-            status: postStatus,
-            publishedAt: successCount > 0 ? new Date() : null
+        console.log('🚀 PUBLISH ENDPOINT: Calling Bundle Social API...')
+        const bundleRes = await fetch(`${BUNDLE_API}/post`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': BUNDLE_KEY(),
           },
-          include: {
-            publications: {
-              include: {
-                socialAccount: true
-              }
-            },
-            analytics: true
-          }
+          body: JSON.stringify(bundleBody),
         })
 
-        // Return response based on whether any platforms succeeded
-        if (successCount === 0) {
-          // All platforms failed - return error response
-          console.log(`❌ PUBLISH ENDPOINT: All platforms failed`)
-          const failedPublications = publishResults.filter((r: PublishResult) => !r.success)
-          const reconnectionAccounts = failedPublications.filter((r: PublishResult) => r.needsReconnection)
-          
-          let errorMessage = `Post publishing failed on all platforms`
-          
-          if (reconnectionAccounts.length > 0) {
-            const platforms = [...new Set(reconnectionAccounts.map((r: PublishResult) => r.platform))]
-            errorMessage += `. The following platforms need reconnection: ${platforms.join(', ')}`
-          }
-
-          return apiError(errorMessage, 400)
-        } else if (successCount < totalCount) {
-          // Some platforms succeeded, some failed - return success with warnings
-          console.log(`⚠️ PUBLISH ENDPOINT: Partial success: ${successCount}/${totalCount} platforms succeeded`)
-          const failedPublications = publishResults.filter((r: PublishResult) => !r.success)
-          const reconnectionAccounts = failedPublications.filter((r: PublishResult) => r.needsReconnection)
-          
-          let message = `Post published with errors: ${successCount}/${totalCount} platforms succeeded`
-          
-          if (reconnectionAccounts.length > 0) {
-            const platforms = [...new Set(reconnectionAccounts.map((r: PublishResult) => r.platform))]
-            message += `. The following platforms need reconnection: ${platforms.join(', ')}`
-          }
-
-          return apiSuccess({
-            post: updatedPost,
-            publishResults,
-            successCount,
-            totalCount,
-            message,
-            hasWarnings: true,
-            needsReconnection: reconnectionNeeded,
-            reconnectionPlatforms: reconnectionNeeded ? 
-              [...new Set(failedPublications.filter((r: PublishResult) => r.needsReconnection).map((r: PublishResult) => r.platform))] : []
-          })
-        } else {
-          // All platforms succeeded
-          console.log(`✅ PUBLISH ENDPOINT: All platforms succeeded`)
-          return apiSuccess({
-            post: updatedPost,
-            publishResults,
-            successCount,
-            totalCount,
-            message: `Post published successfully to all ${totalCount} platforms`
-          })
+        if (!bundleRes.ok) {
+          const errText = await bundleRes.text()
+          console.error(`❌ Bundle post submission failed (${bundleRes.status}):`, errText)
+          return apiError('Failed to publish to social media via Bundle Social', 502)
         }
+
+        const bundleData = await bundleRes.json()
+        const bundlePostId = bundleData.id
+        console.log('✅ PUBLISH ENDPOINT: Success! Bundle Post ID:', bundlePostId)
+
+        // 7. Update database status
+        const now = new Date().toISOString()
+        
+        await (db as any)
+          .from('posts')
+          .update({
+            status: 'PUBLISHED',
+            bundle_post_id: bundlePostId,
+            published_at: now,
+            updated_at: now
+          })
+          .eq('id', postId)
+
+        await (db as any)
+          .from('post_publications')
+          .update({
+            status: 'PUBLISHED',
+            published_at: now,
+            updated_at: now
+          })
+          .eq('post_id', postId)
+
+        return apiSuccess({
+          message: 'Post published successfully to all selected platforms',
+          bundlePostId,
+          platforms
+        })
+
       } catch (error) {
         console.error('❌ PUBLISH ENDPOINT: Failed to publish post:', error)
         return apiError('Failed to publish post', 500)
