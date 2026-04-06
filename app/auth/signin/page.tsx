@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,7 @@ import { useTheme } from '@/components/providers/theme-provider'
 import { Sparkles, Mail, Lock, ArrowRight, AlertCircle, Chrome } from 'lucide-react'
 import ThemeToggle from "@/components/ui/ThemeToggle"
 
-export default function SignInPage() {
+function SignInContent() {
   const { theme } = useTheme()
   const supabase = getSupabaseBrowserClient()
   const [formData, setFormData] = useState({ email: '', password: '' })
@@ -208,5 +208,17 @@ export default function SignInPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-rose-500"></div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   )
 }

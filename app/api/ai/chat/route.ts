@@ -1,5 +1,8 @@
 // AI Chat endpoint for content generation
 import { NextRequest } from 'next/server'
+
+export const dynamic = 'force-dynamic'
+
 import { withAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError, validateRequest, schemas } from '@/lib/api-utils'
 import { generateContent, generateHashtags, isAIConfigured } from '@/lib/ai'

@@ -94,25 +94,6 @@ export function validatePostContent(
       }
     }
 
-    if (platformId === 'LINKEDIN') {
-      const liData = (content as any).linkedinData || {}
-      
-      // Character Limit override for LI (3000 chars)
-      if (content.text.length > 3000) {
-        errors.push(`LinkedIn post exceeds 3,000 characters`)
-      }
-
-      // Media Title
-      if (liData.mediaTitle && liData.mediaTitle.length > 200) {
-        errors.push('LinkedIn media title exceeds 200 characters')
-      }
-
-      // Link Preview
-      if (liData.link && liData.link.length > 2048) {
-        errors.push('LinkedIn link preview URL exceeds 2,048 characters')
-      }
-    }
-
     results[platformId] = {
       isValid: errors.length === 0,
       errors,

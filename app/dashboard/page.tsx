@@ -3,7 +3,7 @@
 import { useAuth } from "@/components/providers/auth-provider"
 import React from 'react';
 import { useRouter, useSearchParams } from "next/navigation"
-import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from "react"
 import { createPortal } from "react-dom"
 import { AdvancedEditModal } from "@/components/content/advanced-edit-modal"
 import { ScheduleModal } from "@/components/content/schedule-modal"
@@ -98,7 +98,7 @@ interface NotificationItem {
 // Small polished line chart (no external lib)
 // Components moved to @/components/dashboard/ folder for modularity
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { user: session, loading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1113,3 +1113,14 @@ export default function DashboardPage() {
   )
 }
 
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 dark:bg-neutral-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-rose-500"></div>
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
+  )
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import React from 'react'
 import { useAuth } from "@/components/providers/auth-provider"
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -110,7 +110,7 @@ const BUNDLE_ERROR_MESSAGES: Record<string, string> = {
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
-export default function IntegrationsPage() {
+function IntegrationsContent() {
   const { user: session, loading: sessionLoading } = useAuth()
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
   const [loading, setLoading] = useState(true)
@@ -1100,4 +1100,15 @@ function formatLastSync(dateString: string) {
   if (diffInHours < 48) return '1 day ago'
   if (diffInHours < 168) return `${Math.floor(diffInHours / 24)} days ago`
   return `${Math.floor(diffInHours / 168)} weeks ago`
+}
+export default function IntegrationsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 dark:bg-neutral-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-rose-500"></div>
+      </div>
+    }>
+      <IntegrationsContent />
+    </Suspense>
+  )
 }

@@ -29,12 +29,33 @@ const globalForBundle = globalThis as unknown as {
   bundleSocial: Bundlesocial | undefined
 }
 
-export const bundleSocial: Bundlesocial =
-  globalForBundle.bundleSocial ??
-  new Bundlesocial(process.env.BUNDLE_SOCIAL_API_KEY!)
+export const getBundleSocial = () => {
+  const apiKey = process.env.BUNDLE_SOCIAL_API_KEY
+  if (!apiKey) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('BUNDLE_SOCIAL_API_KEY is missing.')
+    }
+    return null as any
+  }
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForBundle.bundleSocial = bundleSocial
+  if (!globalForBundle.bundleSocial) {
+    globalForBundle.bundleSocial = new Bundlesocial(apiKey)
+  }
+  return globalForBundle.bundleSocial
 }
+
+export const bundleSocial = new Proxy({} as any, {
+  get(target, prop) {
+    const client = getBundleSocial()
+    if (!client) {
+      throw new Error('Bundle.social client not initialized. Missing API key.')
+    }
+    const value = (client as any)[prop]
+    if (typeof value === 'function') {
+      return value.bind(client)
+    }
+    return value
+  }
+})
 
 export default bundleSocial
