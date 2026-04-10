@@ -31,7 +31,7 @@ export default function PricingPage() {
       const data = await response.json()
 
       if (data.success && data.data.url) {
-        window.location.href = data.data.url
+        window.location.assign(data.data.url)
       } else {
         throw new Error('Failed to create checkout session')
       }

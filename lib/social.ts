@@ -1,5 +1,4 @@
-// Social platform integration placeholder
-// This will be implemented with OAuth and platform APIs
+import { createClient } from '@/lib/supabase/server'
 
 export const socialPlatforms = {
   twitter: {
@@ -26,6 +25,27 @@ export const socialPlatforms = {
       // YouTube OAuth configuration
     }
   }
+}
+
+export async function getSocialAccounts() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('social_accounts')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('platform', { ascending: true })
+    .order('updated_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching social accounts:', error)
+    return []
+  }
+
+  return data || []
 }
 
 export const publishPost = async (platform: string, content: any, tokens: any) => {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { subscriptionTiers, formatPrice } from '@/lib/stripe'
 
@@ -9,6 +10,7 @@ interface SubscriptionCardProps {
 }
 
 export function SubscriptionCard({ userId }: SubscriptionCardProps) {
+  const router = useRouter()
   const [subscription, setSubscription] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -45,7 +47,7 @@ export function SubscriptionCard({ userId }: SubscriptionCardProps) {
       const data = await response.json()
 
       if (data.success && data.data.url) {
-        window.location.href = data.data.url
+        window.location.assign(data.data.url)
       } else {
         throw new Error(data.error?.message || 'Failed to create portal session')
       }
@@ -126,7 +128,7 @@ export function SubscriptionCard({ userId }: SubscriptionCardProps) {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription</h3>
         <p className="text-gray-600 mb-4">No subscription found.</p>
-        <Button onClick={() => window.location.href = '/pricing'}>
+        <Button onClick={() => router.push('/pricing')}>
           Choose a Plan
         </Button>
       </div>

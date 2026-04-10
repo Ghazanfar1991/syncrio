@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/components/providers/auth-provider'
+import { QueryProvider } from '@/components/providers/query-provider'
+import { ServiceWorkerProvider } from '@/components/providers/service-worker-provider'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { Toaster } from '@/components/ui/toaster'
 
@@ -21,10 +23,14 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className="dark">
       <body className={inter.className}>
         <ThemeProvider>
-          <AuthProvider>
-            {children}
-            <Toaster position="top-right" />
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <ServiceWorkerProvider>
+                {children}
+                <Toaster position="top-center" />
+              </ServiceWorkerProvider>
+            </AuthProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

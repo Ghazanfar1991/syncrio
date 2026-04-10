@@ -1,0 +1,222 @@
+/* Extracted from the app-level styles used by toast/create-post/design-post/AI-agent UI. */
+
+:root {
+  .dark {
+    --new-back-drop: #000;
+    --new-settings: #242323;
+    --new-border: #252525;
+    --new-bgColor: #0e0e0e;
+    --new-bgColorInner: #1a1919;
+    --new-sep: #454444;
+    --new-bgLineColor: #212121;
+    --new-textItemFocused: #1a1919;
+    --new-textItemBlur: #999999;
+    --new-boxFocused: #fff;
+    --new-textColor: 255 255 255;
+    --new-blockSeparator: #272626;
+    --new-btn-simple: #313030;
+    --new-btn-text: #ffffff;
+    --new-btn-primary: #612bd3;
+    --new-ai-btn: #d82d7e;
+    --new-box-hover: #201f1f;
+    --new-table-border: #2b2b2b;
+    --new-table-header: #1e1d1d;
+    --new-table-text: #9c9c9c;
+    --new-table-text-focused: #fc69ff;
+    --new-small-strips: #191818;
+    --new-big-strips: #161515;
+    --new-col-color: #2c2b2b;
+    --new-menu-dots: #696868;
+    --new-menu-hover: #fff;
+    --popup-color: rgba(65, 64, 66, 0.3);
+    --border-preview: transparent;
+    --preview-box-shadow: none;
+  }
+
+  .light {
+    --new-back-drop: #2d1b57;
+    --new-settings: #eceef1;
+    --new-sep: #d5d9dd;
+    --new-border: #eaecee;
+    --new-bgColor: #f0f2f4;
+    --new-bgColorInner: #ffffff;
+    --new-bgLineColor: #e7e9eb;
+    --new-textItemFocused: #3900b2;
+    --new-textItemBlur: #777b7f;
+    --new-boxFocused: #ebe8ff;
+    --new-textColor: 14 14 14;
+    --new-blockSeparator: #f2f2f4;
+    --new-btn-simple: #eceef1;
+    --new-btn-text: #0e0e0e;
+    --new-btn-primary: #612bd3;
+    --new-ai-btn: #d82d7e;
+    --new-box-hover: #f4f6f8;
+    --new-table-border: #e7e9eb;
+    --new-table-header: #f5f7f9;
+    --new-table-text: #777b7f;
+    --new-table-text-focused: #fc69ff;
+    --new-small-strips: #191818;
+    --new-big-strips: #f5f7f9;
+    --new-col-color: #eff1f3;
+    --new-menu-dots: #696868;
+    --new-menu-hover: #000;
+    --popup-color: rgba(55, 37, 97, 0.2);
+    --border-preview: #f1f0f3;
+    --preview-box-shadow: 0 15px 34px 0 rgba(38, 32, 64, 0.05);
+  }
+}
+
+.w-md-editor-text {
+  min-height: 100% !important;
+}
+
+.w-md-editor {
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.w-md-editor-toolbar {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 8px !important;
+}
+
+.editor :not(.removeEditor *) {
+  color: rgb(var(--new-textColor));
+}
+
+.editor .polonto * {
+  color: black !important;
+}
+
+.hideCopilot .copilotKitPopup {
+  display: none !important;
+}
+
+.col-calendar:hover:before {
+  content: 'Date passed';
+  color: var(--color-text);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  opacity: 30%;
+  font-size: 14px;
+}
+
+.ProseMirror ul,
+.preview ul {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.preview ul,
+.preview li {
+  white-space: nowrap;
+}
+
+.ProseMirror h1,
+.preview h1 {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.ProseMirror h2,
+.preview h2 {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.ProseMirror h3,
+.preview h3 {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.preview p {
+  min-height: 24px;
+}
+
+.repeated-strip {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--new-bgColorInner),
+    var(--new-bgColorInner) 4px,
+    var(--new-big-strips) 4px,
+    var(--new-big-strips) 8px
+  );
+}
+
+.mantine-Modal-inner {
+  backdrop-filter: blur(10px);
+}
+
+.mantine-Modal-modal {
+  padding: 0;
+  background: var(--new-bgColorInner);
+  border-radius: 24px;
+}
+
+.mantine-Overlay-root {
+  background: rgba(65, 64, 66, 0.3) !important;
+}
+
+.dropdown-menu {
+  background: var(--new-bgColorInner);
+  border: 1px solid var(--new-bgLineColor);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  position: relative;
+}
+
+.dropdown-menu button {
+  align-items: center;
+  background-color: transparent;
+  display: flex;
+  text-align: left;
+  width: 100%;
+  padding: 10px;
+}
+
+.dropdown-menu button:hover,
+.dropdown-menu button:hover.is-selected {
+  background-color: var(--new-bgLineColor);
+}
+
+.tiptap a {
+  text-decoration: underline;
+}
+
+.tiptap :first-child {
+  margin-top: 0;
+}
+
+.tiptap p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.agent .copilotKitInputContainer {
+  padding: 0 24px !important;
+}
+
+.agent .copilotKitInput {
+  width: 100% !important;
+}
+
+.copilotKitMessage img {
+  width: 200px;
+}
+
+.copilotKitMessage a {
+  color: var(--new-btn-text) !important;
+}

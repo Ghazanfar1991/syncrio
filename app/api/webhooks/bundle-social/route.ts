@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
+import { normalizeBundleAccountState } from '@/lib/bundle-account-state'
 import { supabaseAdmin as db } from '@/lib/supabase/admin'
 
 /**
@@ -202,17 +203,12 @@ async function handleAccountCreated(data: any) {
   const payload = {
     user_id: userId,
     platform: data.type,
-    account_id: data.externalId || data.platformId || data.id,
-    account_name: data.displayName || data.username || data.id,
-    display_name: data.displayName,
-    username: data.username,
-    avatar_url: data.avatarUrl || null,
+    ...normalizeBundleAccountState(data),
     access_token: 'managed_by_bundle',
     is_connected: true,
     is_active: true,
     needs_reauth: false,
     bundle_social_account_id: data.id,
-    metadata: { available_channels: data.channels || [] },
     updated_at: data.createdAt || new Date().toISOString(),
   }
 
@@ -250,6 +246,7 @@ async function handleAccountUpdated(data: any) {
 
   const updates: Record<string, any> = {
     updated_at: new Date().toISOString(),
+    ...normalizeBundleAccountState(data),
   }
 
   if (isDisconnectWarning) {
@@ -262,11 +259,6 @@ async function handleAccountUpdated(data: any) {
     }
     console.warn(`⚠️ social-account.updated [${statusCode}] for account ${bundleAccountId}`)
   }
-
-  // Basic field updates (e.g. avatar, displayName)
-  if (data.displayName) updates.display_name = data.displayName
-  if (data.avatarUrl) updates.avatar_url = data.avatarUrl
-  if (data.username) updates.username = data.username
 
   await (db as any)
     .from('social_accounts')
@@ -313,11 +305,7 @@ async function handleTeamUpdated(data: any) {
     const payload = {
       user_id: userId,
       platform: acc.type,
-      account_id: acc.externalId || acc.platformId || acc.id,
-      account_name: acc.displayName || acc.username,
-      display_name: acc.displayName,
-      username: acc.username,
-      avatar_url: acc.avatarUrl || null,
+      ...normalizeBundleAccountState(acc),
       access_token: 'managed_by_bundle',
       is_connected: true,
       is_active: true,

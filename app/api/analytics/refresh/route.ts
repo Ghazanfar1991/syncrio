@@ -1,17 +1,47 @@
-// Force-refresh analytics from Bundle.social
-// Rate limit: numTeams × 5 calls per day (Bundle enforced)
-import { NextRequest, NextResponse } from 'next/server'
-import { withAuth, withErrorHandling } from '@/lib/middleware'
-import { apiSuccess, apiError } from '@/lib/api-utils'
+import { NextRequest } from 'next/server'
+
+import { apiError, apiSuccess } from '@/lib/api-utils'
+import { invalidateAnalyticsCacheForUser } from '@/lib/analytics/bundle-analytics'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { withAuth, withErrorHandling } from '@/lib/middleware'
 
 const BUNDLE_API = 'https://api.bundle.social/api/v1'
-const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
+
+type RefreshScope = 'account' | 'posts' | 'all'
+
+function normalizePlatform(platform: string | null | undefined) {
+  const normalized = (platform || '').trim().toUpperCase()
+  return normalized || null
+}
+
+async function bundleFetch(path: string, init?: RequestInit) {
+  const response = await fetch(`${BUNDLE_API}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.BUNDLE_SOCIAL_API_KEY || '',
+      ...(init?.headers || {}),
+    },
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    const error = new Error(text || `Bundle request failed with ${response.status}`)
+    ;(error as any).status = response.status
+    throw error
+  }
+
+  return response.json()
+}
 
 export async function POST(req: NextRequest) {
   return withErrorHandling(
-    withAuth(async (req: NextRequest, user: any) => {
-      // Get user's Bundle team
+    withAuth(async (request: NextRequest, user: any) => {
+      const body = await request.json().catch(() => ({}))
+      const scope = ((body.scope || 'account') as RefreshScope)
+      const requestedPlatform = normalizePlatform(body.platform)
+      const requestedAccountId = typeof body.accountId === 'string' ? body.accountId : null
+
       const { data: team } = await (supabaseAdmin as any)
         .from('teams')
         .select('bundle_social_team_id')
@@ -22,35 +52,88 @@ export async function POST(req: NextRequest) {
         return apiError('No connected team found', 400)
       }
 
-      const bundleTeamId = team.bundle_social_team_id
+      const { data: accounts, error } = await (supabaseAdmin as any)
+        .from('social_accounts')
+        .select('id, account_id, platform, bundle_social_account_id')
+        .eq('user_id', user.id)
+        .eq('is_connected', true)
+        .not('bundle_social_account_id', 'is', null)
 
-      // Call Bundle force-refresh
-      const bundleRes = await fetch(`${BUNDLE_API}/analytics/force-refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': BUNDLE_KEY(),
-        },
-        body: JSON.stringify({ teamId: bundleTeamId }),
+      if (error) throw error
+
+      const selectedAccounts = (accounts || []).filter((account: any) => {
+        const matchesPlatform = !requestedPlatform || account.platform === requestedPlatform
+        const matchesAccount = !requestedAccountId || account.id === requestedAccountId || account.account_id === requestedAccountId
+        return matchesPlatform && matchesAccount
       })
 
-      if (bundleRes.status === 429) {
-        return apiError('Analytics refresh rate limit reached. You can refresh up to 5 times per team per day.', 429)
+      if (selectedAccounts.length === 0) {
+        return apiError('No connected accounts matched the refresh request.', 404)
       }
 
-      if (!bundleRes.ok) {
-        const errText = await bundleRes.text()
-        console.error('Analytics force-refresh error:', errText)
-        return apiError('Failed to refresh analytics', 500)
+      const uniquePlatforms = [...new Set(selectedAccounts.map((account: any) => String(account.platform || '')))].filter(Boolean)
+      const refreshedPlatforms: string[] = []
+      let refreshedPosts = 0
+
+      try {
+        if (scope === 'account' || scope === 'all') {
+          for (const platform of uniquePlatforms) {
+            await bundleFetch('/analytics/social-account/force', {
+              method: 'POST',
+              body: JSON.stringify({
+                teamId: team.bundle_social_team_id,
+                platformType: platform,
+              }),
+            })
+            refreshedPlatforms.push(platform)
+          }
+        }
+
+        if (scope === 'posts' || scope === 'all') {
+          for (const platform of uniquePlatforms) {
+            const importedPostsResponse = await bundleFetch(
+              `/post-history-import/posts?teamId=${team.bundle_social_team_id}&socialAccountType=${platform}&limit=10`
+            )
+            const importedPosts = Array.isArray(importedPostsResponse?.posts) ? importedPostsResponse.posts : []
+            const targetBundleIds = new Set(selectedAccounts.filter((account: any) => account.platform === platform).map((account: any) => account.bundle_social_account_id))
+
+            for (const post of importedPosts) {
+              if (!targetBundleIds.has(post.socialAccountId)) continue
+
+              await bundleFetch('/analytics/post/force', {
+                method: 'POST',
+                body: JSON.stringify({
+                  importedPostId: post.id,
+                  platformType: platform,
+                }),
+              })
+              refreshedPosts += 1
+            }
+          }
+        }
+      } catch (error) {
+        if ((error as any)?.status === 429) {
+          return apiError('Bundle Social refresh rate limit reached. Please wait before refreshing again.', 429)
+        }
+
+        throw error
       }
 
-      // Invalidate cache so next GET will re-fetch
-      await (supabaseAdmin as any)
-        .from('analytics_cache')
-        .delete()
-        .eq('user_id', user.id)
+      await invalidateAnalyticsCacheForUser(
+        user.id,
+        selectedAccounts.map((account: any) => account.bundle_social_account_id).filter(Boolean)
+      )
 
-      return apiSuccess({ message: 'Analytics refresh triggered. Data will update shortly.' })
+      return apiSuccess({
+        scope,
+        refreshedPlatforms,
+        refreshedPosts,
+        refreshCooldownMinutes: 30,
+        message:
+          scope === 'posts'
+            ? `Triggered post analytics refresh for ${refreshedPosts} imported posts.`
+            : `Triggered analytics refresh for ${refreshedPlatforms.length} platform${refreshedPlatforms.length === 1 ? '' : 's'}.`,
+      })
     })
   )(req)
 }

@@ -1,50 +1,49 @@
 "use client"
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import { useTheme } from '@/components/providers/theme-provider'
-import { Sparkles, Mail, Lock, User, ArrowRight, AlertCircle, Chrome } from 'lucide-react'
-import ThemeToggle from "@/components/ui/ThemeToggle"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { AlertCircle, ArrowRight, Chrome, Eye, EyeOff, Lock, Mail, User } from "lucide-react"
+import { AuthFooterLink, AuthPanel, AuthShell } from "@/components/auth/auth-shell"
+import { Button } from "@/components/ui/button"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function SignUpPage() {
-  const { theme } = useTheme()
   const supabase = getSupabaseBrowserClient()
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  })
-  const [isLoading, setIsLoading] = useState(false)
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
-  const [error, setError] = useState('')
   const router = useRouter()
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [error, setError] = useState("")
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    setError('')
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError("")
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match')
-      setIsLoading(false)
+      setError("Passwords do not match.")
       return
     }
 
     if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters')
-      setIsLoading(false)
+      setError("Password must be at least 8 characters.")
       return
     }
 
+    setIsSubmitting(true)
+
     try {
-      const { error } = await supabase.auth.signUp({
+      const { error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             name: formData.name,
             full_name: formData.name,
@@ -52,198 +51,211 @@ export default function SignUpPage() {
         },
       })
 
-      if (error) {
-        setError(error.message)
-      } else {
-        // Auto sign in after signup (Supabase does this by default when email confirmation is off)
-        router.push('/dashboard')
-        router.refresh()
+      if (signUpError) {
+        setError(signUpError.message)
+        return
       }
+
+      router.push(
+        "/auth/signin?message=Account%20created.%20Check%20your%20email%20if%20confirmation%20is%20required."
+      )
     } catch {
-      setError('Registration failed. Please try again.')
+      setError("We couldn't create your account. Please try again.")
     } finally {
-      setIsLoading(false)
+      setIsSubmitting(false)
     }
   }
 
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+    setError("")
+
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
     })
-    if (error) {
-      setError(error.message)
+
+    if (oauthError) {
+      setError(oauthError.message)
       setIsGoogleLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-r from-rose-50 to-pink-50 dark:from-zinc-950 dark:to-black flex items-center justify-center p-6 antialiased">
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-24 right-0 h-64 w-64 rounded-full blur-3xl opacity-40 bg-gradient-to-tr from-cyan-500 to-fuchsia-500 dark:opacity-30" />
-        <div className="absolute bottom-0 left-0 h-72 w-72 rounded-full blur-3xl opacity-40 bg-gradient-to-tr from-emerald-500 to-indigo-500 dark:opacity-30" />
-      </div>
-
-      <div className="w-full max-w-md relative z-10">
-        <div className="text-left mb-2">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="inline-flex items-center gap-3 group">
-              <div className="relative h-8 w-8 overflow-hidden">
-                <img src="/applogo.PNG" alt="Syncrio Logo" className="w-full h-full" />
-              </div>
-              <span className="text-2xl font-semibold tracking-tight">Syncrio</span>
-            </Link>
-            <ThemeToggle className="h-6 w-16 mt-1" />
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white/70 -mt-6 shadow-sm backdrop-blur-md transition-all duration-200 p-8 dark:bg-zinc-900/60">
-          <div className="text-center mb-8">
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/60 ring-1 ring-zinc-900/5 px-3 text-xs tracking-wide text-muted-foreground dark:bg-zinc-900/60 dark:ring-white/10">
-              <Sparkles className="h-3.5 w-3.5" />
-              14-day free trial
+    <AuthShell
+      eyebrow="Start your workspace"
+      title="Create your account and launch faster."
+      description="Set up your Syncrio workspace, connect your team later, and start building posts with a cleaner workflow from day one."
+    >
+      <AuthPanel
+        title="Create account"
+        description="Start with email or Google. You can invite teammates, connect channels, and manage content once you're inside."
+      >
+        {error && (
+          <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
             </div>
-            <h1 className="text-3xl font-semibold leading-tight md:text-4xl">
-              Create your account
-            </h1>
-            <p className="mt-3 -mb-5 text-base text-muted-foreground">
-              Start creating engaging social content in minutes
-            </p>
           </div>
+        )}
 
-          {error && (
-            <div className="mb-4 p-4 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl flex items-center gap-3">
-              <AlertCircle className="h-5 w-5" />
-              {error}
-            </div>
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={isGoogleLoading}
+          className="mb-5 flex w-full items-center justify-center gap-3 rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm font-medium transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]"
+        >
+          {isGoogleLoading ? (
+            <span className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-600 dark:border-t-white" />
+          ) : (
+            <Chrome className="h-5 w-5" />
           )}
+          Continue with Google
+        </button>
 
-          {/* Google Sign Up */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={isGoogleLoading}
-            className="w-full mb-6 flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-white/60 dark:bg-zinc-800/60 ring-1 ring-zinc-900/10 dark:ring-white/10 hover:bg-white/80 dark:hover:bg-zinc-800/80 transition-all duration-200 font-medium text-sm disabled:opacity-50"
-          >
-            {isGoogleLoading ? (
-              <div className="w-5 h-5 border-2 border-zinc-300 border-t-zinc-700 rounded-full animate-spin" />
-            ) : (
-              <Chrome className="h-5 w-5" />
-            )}
-            Continue with Google
-          </button>
-
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-zinc-200 dark:border-zinc-700" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white/70 dark:bg-zinc-900/60 px-2 text-muted-foreground">or</span>
-            </div>
+        <div className="relative mb-5">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-zinc-200 dark:border-white/10" />
           </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="space-y-2">
-              <label htmlFor="name" className="block text-sm font-medium text-foreground">Full Name</label>
-              <div className="relative group">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input
-                  id="name"
-                  type="text"
-                  autoComplete="name"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/60 backdrop-blur-sm dark:bg-zinc-800/60 border-0 ring-1 ring-zinc-900/5 dark:ring-white/10 shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Enter your full name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-foreground">Email address</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/60 backdrop-blur-sm dark:bg-zinc-800/60 border-0 ring-1 ring-zinc-900/5 dark:ring-white/10 shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Enter your email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-foreground">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  minLength={8}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/60 backdrop-blur-sm dark:bg-zinc-800/60 border-0 ring-1 ring-zinc-900/5 dark:ring-white/10 shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Create a password (8+ characters)"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground">Confirm Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="w-full pl-10 pr-4 py-3 rounded-xl bg-white/60 backdrop-blur-sm dark:bg-zinc-800/60 border-0 ring-1 ring-zinc-900/5 dark:ring-white/10 shadow-sm transition-all duration-200 placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  placeholder="Confirm your password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:from-rose-600 hover:to-pink-600 border-0 py-3 text-lg font-medium rounded-xl shadow-sm hover:shadow-lg transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Creating Account...
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  Create Account
-                  <ArrowRight className="h-5 w-5" />
-                </div>
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-4 -mb-4 text-center">
-            <p className="text-sm text-muted-foreground">
-              Already have an account?{' '}
-              <Link href="/auth/signin" className="font-medium text-primary hover:text-primary-hover transition-colors">
-                Sign in
-              </Link>
-            </p>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-3 text-xs uppercase tracking-[0.2em] text-zinc-400 dark:bg-neutral-900 dark:text-zinc-500">
+              or create with email
+            </span>
           </div>
         </div>
-      </div>
-    </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="name" className="text-sm font-medium">
+              Full name
+            </label>
+            <div className="relative">
+              <User className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                required
+                value={formData.name}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, name: event.target.value }))
+                }
+                placeholder="Your full name"
+                className="w-full rounded-2xl border border-black/10 bg-zinc-50 px-12 py-3.5 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100 dark:border-white/10 dark:bg-white/[0.04] dark:focus:border-rose-400/40 dark:focus:bg-white/[0.06] dark:focus:ring-rose-500/10"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="email" className="text-sm font-medium">
+              Work email
+            </label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={formData.email}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, email: event.target.value }))
+                }
+                placeholder="you@company.com"
+                className="w-full rounded-2xl border border-black/10 bg-zinc-50 px-12 py-3.5 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100 dark:border-white/10 dark:bg-white/[0.04] dark:focus:border-rose-400/40 dark:focus:bg-white/[0.06] dark:focus:ring-rose-500/10"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="password" className="text-sm font-medium">
+              Password
+            </label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                value={formData.password}
+                onChange={(event) =>
+                  setFormData((current) => ({ ...current, password: event.target.value }))
+                }
+                placeholder="Create a strong password"
+                className="w-full rounded-2xl border border-black/10 bg-zinc-50 px-12 py-3.5 pr-12 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100 dark:border-white/10 dark:bg-white/[0.04] dark:focus:border-rose-400/40 dark:focus:bg-white/[0.06] dark:focus:ring-rose-500/10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="confirmPassword" className="text-sm font-medium">
+              Confirm password
+            </label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-zinc-400" />
+              <input
+                id="confirmPassword"
+                type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
+                required
+                value={formData.confirmPassword}
+                onChange={(event) =>
+                  setFormData((current) => ({
+                    ...current,
+                    confirmPassword: event.target.value,
+                  }))
+                }
+                placeholder="Repeat your password"
+                className="w-full rounded-2xl border border-black/10 bg-zinc-50 px-12 py-3.5 pr-12 text-sm outline-none transition focus:border-rose-300 focus:bg-white focus:ring-4 focus:ring-rose-100 dark:border-white/10 dark:bg-white/[0.04] dark:focus:border-rose-400/40 dark:focus:bg-white/[0.06] dark:focus:ring-rose-500/10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((value) => !value)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+              >
+                {showConfirmPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+              </button>
+            </div>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="mt-2 h-12 w-full rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-orange-400 text-base font-semibold text-white shadow-[0_18px_40px_-20px_rgba(244,63,94,0.75)] transition hover:scale-[1.01] hover:from-rose-600 hover:via-pink-500 hover:to-orange-500"
+          >
+            {isSubmitting ? (
+              <span className="flex items-center gap-2">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Creating account...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                Create account
+                <ArrowRight className="h-4.5 w-4.5" />
+              </span>
+            )}
+          </Button>
+        </form>
+
+        <div className="mt-6 border-t border-black/5 pt-5 dark:border-white/10">
+          <AuthFooterLink
+            prompt="Already have an account?"
+            href="/auth/signin"
+            label="Sign in"
+          />
+        </div>
+      </AuthPanel>
+    </AuthShell>
   )
 }

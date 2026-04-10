@@ -2,6 +2,24 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const protectedPrefixes = [
+    '/dashboard',
+    '/analytics',
+    '/calendar',
+    '/posts',
+    '/integrations',
+    '/create',
+    '/settings',
+    '/app-owner',
+  ]
+  const isAuthPage = pathname === '/auth/signin' || pathname === '/auth/signup'
+  const isProtectedPage = protectedPrefixes.some((prefix) => pathname.startsWith(prefix))
+
+  if (!isAuthPage && !isProtectedPage) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -25,18 +43,10 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
+  // Refresh session if expired only for routes that need auth state
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
-  // Protect dashboard and API routes
-  const isProtected =
-    pathname.startsWith('/dashboard') ||
-    (pathname.startsWith('/api') &&
-      !pathname.startsWith('/api/stripe/webhook'))
-
-  if (isProtected && !user) {
+  if (isProtectedPage && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/auth/signin'
     return NextResponse.redirect(url)
@@ -54,6 +64,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|public|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|public|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

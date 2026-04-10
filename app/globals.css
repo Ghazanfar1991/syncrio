@@ -45,6 +45,26 @@
 
 :root {
   --radius: 0.75rem;
+  --sample-create-backdrop: #2d1b57;
+  --sample-create-settings: #eceef1;
+  --sample-create-border: #eaecee;
+  --sample-create-surface: #f0f2f4;
+  --sample-create-surface-inner: #ffffff;
+  --sample-create-strip: #e7e9eb;
+  --sample-create-header: rgba(255, 255, 255, 0.88);
+  --sample-create-footer: #f0f2f4;
+  --sample-create-glass: rgba(255, 255, 255, 0.74);
+  --sample-create-panel: rgba(244, 246, 249, 0.92);
+  --sample-create-panel-strong: rgba(232, 236, 242, 0.98);
+  --sample-create-editor: #e7ebf0;
+  --sample-create-editor-inner: #eef2f6;
+  --sample-create-preview-card: rgba(238, 242, 247, 0.96);
+  --sample-create-note: #3a2d13;
+  --sample-create-note-border: #d6bb78;
+  --sample-create-note-text: #6a5730;
+  --sample-create-text: 14 14 14;
+  --sample-create-text-muted: 119 123 127;
+  --sample-create-button-simple: #eceef1;
 
   /* Modern Color Palette */
   --background: 255 255 255;
@@ -95,6 +115,26 @@
 }
 
 .dark {
+  --sample-create-backdrop: #000000;
+  --sample-create-settings: #17181c;
+  --sample-create-border: #2a2c31;
+  --sample-create-surface: #101114;
+  --sample-create-surface-inner: #191b20;
+  --sample-create-strip: #252830;
+  --sample-create-header: #101010;
+  --sample-create-footer: #1a1b1f;
+  --sample-create-glass: rgba(255, 255, 255, 0.72);
+  --sample-create-panel: rgba(21, 23, 28, 0.88);
+  --sample-create-panel-strong: rgba(29, 31, 37, 0.95);
+  --sample-create-editor: #2b292c;
+  --sample-create-editor-inner: #232125;
+  --sample-create-preview-card: rgba(24, 25, 29, 0.94);
+  --sample-create-note: #3a2d13;
+  --sample-create-note-border: #5d4b24;
+  --sample-create-note-text: #dcc48a;
+  --sample-create-text: 255 255 255;
+  --sample-create-text-muted: 153 153 153;
+  --sample-create-button-simple: #313030;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

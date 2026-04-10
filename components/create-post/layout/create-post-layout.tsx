@@ -21,7 +21,7 @@ export function CreatePostLayout({
   return (
     <div className={cn("flex flex-col h-screen bg-[#f8f9fc] dark:bg-neutral-950 overflow-hidden", className)}>
       {/* Header */}
-      {header && <div className="z-10 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-black/5 dark:border-white/5">{header}</div>}
+      {header && <div className="z-10  bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-black/5 dark:border-white/5">{header}</div>}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main Editor Area */}

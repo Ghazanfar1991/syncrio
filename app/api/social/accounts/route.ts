@@ -1,18 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { normalizeBundleAccountState } from '@/lib/bundle-account-state'
+import { SUPPORTED_PLATFORMS } from '@/lib/bundle-social'
+import { getAuthUser } from '@/lib/middleware'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { bundleSocial } from '@/lib/bundle-social'
 
 const BUNDLE_API = 'https://api.bundle.social/api/v1'
 const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
 // Untyped alias — needed until Supabase types are regenerated post-migration
 const db = supabaseAdmin as any
 
-async function getAuthUser() {
-  const supabase = await createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return null
-  return user
+function getAppBaseUrl(request: NextRequest) {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (configured) {
+    try {
+      return new URL(configured).origin
+    } catch {
+      console.warn('NEXT_PUBLIC_APP_URL is not a valid absolute URL. Falling back to request origin.')
+    }
+  }
+
+  const ngrokUrl = process.env.NGROK_URL?.trim()
+  if (ngrokUrl) {
+    try {
+      return new URL(ngrokUrl).origin
+    } catch {
+      console.warn('NGROK_URL is not a valid absolute URL. Falling back to request origin.')
+    }
+  }
+
+  const host = request.headers.get('host')
+  const proto = request.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
+  return `${proto}://${host}`
+}
+
+function getBundlePortalBranding(request: NextRequest, userName?: string | null) {
+  const appBaseUrl = getAppBaseUrl(request)
+  const logoPath = process.env.BUNDLE_SOCIAL_AUTH_LOGO_PATH?.trim() || '/applogo.PNG'
+  const logoUrl = /^https?:\/\//i.test(logoPath)
+    ? logoPath
+    : `${appBaseUrl}${logoPath.startsWith('/') ? '' : '/'}${logoPath}`
+
+  return {
+    logoUrl,
+    userLogoUrl: logoUrl,
+    userName: userName || 'Syncrio',
+    socialAccountTypes: SUPPORTED_PLATFORMS.map((platform) => platform.id),
+  }
+}
+
+async function fetchBundleAccountByType(
+  teamId: string,
+  platform: string,
+  fallbackSocialAccountId?: string | null
+) {
+  const byTypeUrl = new URL(`${BUNDLE_API}/social-account/by-type`)
+  byTypeUrl.searchParams.set('teamId', teamId)
+  byTypeUrl.searchParams.set('type', platform)
+
+  const byTypeRes = await fetch(byTypeUrl.toString(), {
+    headers: { 'x-api-key': BUNDLE_KEY() },
+  })
+
+  if (byTypeRes.ok) {
+    return byTypeRes.json()
+  }
+
+  if (!fallbackSocialAccountId) return null
+
+  const byIdRes = await fetch(`${BUNDLE_API}/social-account/${fallbackSocialAccountId}`, {
+    headers: { 'x-api-key': BUNDLE_KEY() },
+  })
+
+  if (byIdRes.ok) {
+    return byIdRes.json()
+  }
+
+  return null
+}
+
+function toBundleChannels(channels: Array<{ id: string; name: string; username?: string | null; avatar_url?: string | null }> | null | undefined) {
+  if (!Array.isArray(channels)) return []
+
+  return channels.map((channel) => ({
+    id: channel.id,
+    name: channel.name,
+    username: channel.username ?? null,
+    avatarUrl: channel.avatar_url ?? null,
+  }))
+}
+
+async function refreshBundleChannels(teamId: string, platform: string) {
+  const res = await fetch(`${BUNDLE_API}/social-account/refresh-channels`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': BUNDLE_KEY(),
+    },
+    body: JSON.stringify({ teamId, type: platform }),
+  })
+
+  if (!res.ok) {
+    return null
+  }
+
+  try {
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+async function upsertNormalizedSocialAccount(userId: string, platform: string, remoteAccount: any) {
+  const normalized = normalizeBundleAccountState(remoteAccount, platform)
+
+  const payload = {
+    user_id: userId,
+    platform,
+    account_id: normalized.account_id,
+    account_name: normalized.account_name,
+    display_name: normalized.display_name,
+    username: normalized.username,
+    avatar_url: normalized.avatar_url,
+    access_token: 'managed_by_bundle',
+    is_connected: true,
+    is_active: true,
+    needs_reauth: false,
+    bundle_social_account_id: remoteAccount.id,
+    metadata: normalized.metadata,
+    updated_at: new Date().toISOString(),
+  }
+
+  const { data: existing } = await (db as any)
+    .from('social_accounts')
+    .select('id')
+    .eq('bundle_social_account_id', remoteAccount.id)
+    .maybeSingle()
+
+  if (existing) {
+    const { error: updateError } = await (db as any)
+      .from('social_accounts')
+      .update(payload)
+      .eq('id', existing.id)
+    if (updateError) throw updateError
+  } else {
+    const { error: insertError } = await (db as any)
+      .from('social_accounts')
+      .insert(payload)
+    if (insertError) throw insertError
+  }
+
+  return normalized
 }
 
 /** Get or lazily create a Bundle.social team for this user.
@@ -103,7 +240,7 @@ async function getOrCreateBundleTeam(userId: string): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET — list connected social accounts for the current user
 // ─────────────────────────────────────────────────────────────────────────────
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await getAuthUser()
     if (!user) {
@@ -112,10 +249,28 @@ export async function GET(request: NextRequest) {
 
     const { data: accounts, error } = await supabaseAdmin
       .from('social_accounts')
-      .select('*')
+      .select(`
+        id,
+        platform,
+        account_id,
+        account_name,
+        display_name,
+        username,
+        avatar_url,
+        is_active,
+        is_connected,
+        needs_reauth,
+        disconnect_scheduled_at,
+        account_type,
+        permissions,
+        bundle_social_account_id,
+        metadata,
+        created_at,
+        updated_at
+      `)
       .eq('user_id', user.id)
       .order('platform', { ascending: true })
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
 
     if (error) throw error
 
@@ -143,9 +298,7 @@ export async function POST(request: NextRequest) {
     if (action === 'connect') {
       const { platform } = body
       const teamId = await getOrCreateBundleTeam(user.id)
-      const host = request.headers.get('host')
-      const proto = request.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
-      const redirectUrl = `${proto}://${host}/integrations?sync=true`
+      const redirectUrl = `${getAppBaseUrl(request)}/integrations?connectedPlatform=${encodeURIComponent(platform || '')}`
 
       // 1. Direct Platform Connection (Vastly superior UX, bypasses portal)
       if (platform) {
@@ -180,7 +333,7 @@ export async function POST(request: NextRequest) {
           console.error(`Bundle connect error for ${platform}:`, errText)
           
           let parsedErr: any = {}
-          try { parsedErr = JSON.parse(errText) } catch (e) {}
+          try { parsedErr = JSON.parse(errText) } catch {}
           
           // Detect "already connected" scenario
           if (res.status === 400 && parsedErr.message?.toLowerCase().includes('already')) {
@@ -208,7 +361,7 @@ export async function POST(request: NextRequest) {
       }
 
       const { data: userData } = await db.from('users').select('name').eq('id', user.id).maybeSingle()
-      if (userData?.name) portalBody.userName = userData.name
+      Object.assign(portalBody, getBundlePortalBranding(request, userData?.name || null))
 
       const res = await fetch(`${BUNDLE_API}/social-account/create-portal-link`, {
         method: 'POST',
@@ -239,49 +392,33 @@ export async function POST(request: NextRequest) {
 
       let synced = 0
       for (const acc of accounts) {
+        const enrichedAccount = await fetchBundleAccountByType(teamId, acc.type, acc.id) || acc
+
         // Log raw account for debugging
         console.log(`🔄 Syncing account [${acc.type}]:`, JSON.stringify({
-          id: acc.id,
-          displayName: acc.displayName,
-          isRequireSetChannel: acc.isRequireSetChannel,
-          channelId: acc.channelId,
-          channelsCount: acc.channels?.length
+          id: enrichedAccount.id || acc.id,
+          displayName: enrichedAccount.displayName || acc.displayName,
+          isRequireSetChannel: enrichedAccount.isRequireSetChannel,
+          channelId: enrichedAccount.channelId,
+          channelsCount: enrichedAccount.channels?.length
         }))
 
-        // Robustly determine if channel selection is required
-        const PLATFORMS_REQUIRING_CHANNEL = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE', 'LINKEDIN', 'GOOGLE_BUSINESS']
-        const isPickNeeded = acc.isRequireSetChannel || (PLATFORMS_REQUIRING_CHANNEL.includes(acc.type) && !acc.channelId)
-        
-        // Use a more descriptive name if none is provided
-        const namePlaceholder = `${acc.type} Account`
-        let displayName = acc.displayName || acc.name
-        
-        // If we have a channelId but No displayName, find it in the channels list
-        if (!displayName && acc.channelId && acc.channels) {
-          const matched = acc.channels.find((c: any) => c.id === acc.channelId)
-          if (matched) displayName = matched.name
-        }
-
-        const displayNamePlaceholder = isPickNeeded ? `Configure ${acc.type}` : `${acc.type} Account`
+        const normalized = normalizeBundleAccountState(enrichedAccount, acc.type)
         
         const payload = {
           user_id: user.id,
           platform: acc.type,
-          account_id: acc.platformId || acc.externalId || acc.id,
-          account_name: acc.displayName || acc.username || acc.name || displayName || namePlaceholder,
-          display_name: displayName || displayNamePlaceholder,
-          username: acc.username || null,
-          avatar_url: acc.avatarUrl || null,
+          account_id: normalized.account_id,
+          account_name: normalized.account_name,
+          display_name: normalized.display_name,
+          username: normalized.username,
+          avatar_url: normalized.avatar_url,
           access_token: 'managed_by_bundle',
           is_connected: true,
           is_active: true,
           needs_reauth: false,
-          bundle_social_account_id: acc.id,
-          metadata: {
-            requires_channel_selection: isPickNeeded,
-            available_channels: acc.channels || [],
-            channel_id: acc.channelId || null
-          },
+          bundle_social_account_id: enrichedAccount.id || acc.id,
+          metadata: normalized.metadata,
           updated_at: new Date().toISOString(),
         }
         
@@ -289,7 +426,7 @@ export async function POST(request: NextRequest) {
         const { data: existing } = await (db as any)
           .from('social_accounts')
           .select('id')
-          .eq('bundle_social_account_id', acc.id)
+          .eq('bundle_social_account_id', enrichedAccount.id || acc.id)
           .maybeSingle()
 
         if (existing) {
@@ -336,15 +473,70 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: `Synced ${synced} accounts`,
+        message: `Refreshed ${synced} account${synced === 1 ? '' : 's'}`,
         count: synced,
       })
     }
 
     // ── ACTION: SET CHANNEL (select FB Page / YT channel / LinkedIn page etc.) ─
+    if (action === 'finalize-connect') {
+      const { platform } = body
+      if (!platform) {
+        return NextResponse.json({ success: false, error: 'Platform is required' }, { status: 400 })
+      }
+
+      const teamId = await getOrCreateBundleTeam(user.id)
+      await refreshBundleChannels(teamId, platform)
+
+      const remoteAccount = await fetchBundleAccountByType(teamId, platform)
+      if (!remoteAccount?.id) {
+        return NextResponse.json(
+          { success: false, error: 'We could not finish connecting this account yet. Please try again.' },
+          { status: 404 }
+        )
+      }
+
+      const normalized = await upsertNormalizedSocialAccount(user.id, platform, remoteAccount)
+
+      return NextResponse.json({
+        success: true,
+        message: 'Connection completed',
+        data: normalized,
+      })
+    }
+
+    if (action === 'refresh-channels') {
+      const { platform, socialAccountId } = body
+      if (!platform) {
+        return NextResponse.json({ success: false, error: 'Platform is required' }, { status: 400 })
+      }
+
+      const teamId = await getOrCreateBundleTeam(user.id)
+      const refreshedAccount = await refreshBundleChannels(teamId, platform)
+      const remoteAccount =
+        refreshedAccount ||
+        await fetchBundleAccountByType(teamId, platform, socialAccountId)
+
+      if (!remoteAccount?.id) {
+        return NextResponse.json(
+          { success: false, error: 'Could not load available channels right now.' },
+          { status: 404 }
+        )
+      }
+
+      const normalized = await upsertNormalizedSocialAccount(user.id, platform, remoteAccount)
+
+      return NextResponse.json({
+        success: true,
+        message: 'Channel options updated',
+        data: normalized,
+      })
+    }
+
     if (action === 'set-channel') {
       const { platform, channelId, socialAccountId } = body
       const teamId = await getOrCreateBundleTeam(user.id)
+      let setChannelPayload: any = null
 
       const res = await fetch(`${BUNDLE_API}/social-account/set-channel`, {
         method: 'POST',
@@ -358,7 +550,7 @@ export async function POST(request: NextRequest) {
       if (!res.ok) {
         const errText = await res.text()
         let parsedErr: any = {}
-        try { parsedErr = JSON.parse(errText) } catch (e) {}
+        try { parsedErr = JSON.parse(errText) } catch {}
 
         // Handle specific "already connected" case (e.g. from failed previous attempt)
         if (res.status === 400 && parsedErr.message?.toLowerCase().includes('already')) {
@@ -366,58 +558,68 @@ export async function POST(request: NextRequest) {
         } else {
           throw new Error(`set-channel failed: ${errText}`)
         }
-      }
-
-      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
-      // After setting a channel, the account name/avatar usually change to match the channel
-      if (socialAccountId) {
-        const accRes = await fetch(`${BUNDLE_API}/social-account/${socialAccountId}`, {
-          headers: { 'x-api-key': BUNDLE_KEY() },
-        })
-        
-        if (accRes.ok) {
-          const acc = await accRes.json()
-          
-          const PLATFORMS_REQUIRING_CHANNEL = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE', 'LINKEDIN', 'GOOGLE_BUSINESS']
-          const isPickNeeded = acc.isRequireSetChannel || (PLATFORMS_REQUIRING_CHANNEL.includes(platform) && !acc.channelId)
-          
-          const namePlaceholder = `${platform} Account`
-          let displayName = acc.displayName || acc.name
-
-          // Extract specifically selected channel name if top-level is still placeholders
-          if ((!displayName || displayName.includes('Configure')) && acc.channelId && acc.channels) {
-            const matched = acc.channels.find((c: any) => c.id === acc.channelId)
-            if (matched) displayName = matched.name
-          }
-
-          const displayNamePlaceholder = isPickNeeded ? `Configure ${platform}` : `${platform} Account`
-
-          await db
-            .from('social_accounts')
-            .update({
-              account_name: acc.displayName || acc.username || acc.name || displayName || namePlaceholder,
-              display_name: displayName || displayNamePlaceholder,
-              username: acc.username || null,
-              avatar_url: acc.avatarUrl || null,
-              metadata: {
-                requires_channel_selection: isPickNeeded,
-                available_channels: acc.channels || [],
-                channel_id: acc.channelId || null
-              },
-              updated_at: new Date().toISOString()
-            })
-            .eq('bundle_social_account_id', socialAccountId)
-            .eq('user_id', user.id)
+      } else {
+        try {
+          setChannelPayload = await res.json()
+        } catch {
+          setChannelPayload = null
         }
       }
 
-      return NextResponse.json({ success: true, message: 'Channel selected successfully' })
+      await refreshBundleChannels(teamId, platform)
+
+      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
+      const { data: existingAccount } = await db
+        .from('social_accounts')
+        .select('id, display_name, username, avatar_url, metadata')
+        .eq('bundle_social_account_id', socialAccountId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const remoteAccount =
+        setChannelPayload ||
+        await fetchBundleAccountByType(teamId, platform, socialAccountId)
+
+      const fallbackAccount = {
+        type: platform,
+        id: socialAccountId,
+        displayName: existingAccount?.display_name || null,
+        username: existingAccount?.username || null,
+        avatarUrl: existingAccount?.avatar_url || null,
+        channelId,
+        channels: toBundleChannels(existingAccount?.metadata?.available_channels),
+      }
+
+      const normalized = normalizeBundleAccountState(
+        remoteAccount || fallbackAccount,
+        platform,
+        channelId
+      )
+
+      if (socialAccountId) {
+        await db
+          .from('social_accounts')
+          .update({
+            account_id: normalized.account_id,
+            account_name: normalized.account_name,
+            display_name: normalized.display_name,
+            username: normalized.username,
+            avatar_url: normalized.avatar_url,
+            metadata: normalized.metadata,
+            updated_at: new Date().toISOString()
+          })
+          .eq('bundle_social_account_id', socialAccountId)
+          .eq('user_id', user.id)
+      }
+
+      return NextResponse.json({ success: true, message: 'Channel selected successfully', data: normalized })
     }
 
     // ── ACTION: UNSET CHANNEL ────────────────────────────────────────────────
     if (action === 'unset-channel') {
       const { platform } = body
       const teamId = await getOrCreateBundleTeam(user.id)
+      let unsetChannelPayload: any = null
 
       const res = await fetch(`${BUNDLE_API}/social-account/unset-channel`, {
         method: 'POST',
@@ -431,32 +633,62 @@ export async function POST(request: NextRequest) {
       if (!res.ok) {
         const err = await res.text()
         throw new Error(`unset-channel failed: ${err}`)
-      }
-
-      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
-      const { socialAccountId: sId } = body
-      if (sId) {
-        const accRes = await fetch(`${BUNDLE_API}/social-account/${sId}`, {
-          headers: { 'x-api-key': BUNDLE_KEY() },
-        })
-        
-        if (accRes.ok) {
-          const acc = await accRes.json()
-          await db
-            .from('social_accounts')
-            .update({
-              metadata: {
-                requires_channel_selection: acc.isRequireSetChannel || false,
-                available_channels: acc.channels || [],
-              },
-              updated_at: new Date().toISOString()
-            })
-            .eq('bundle_social_account_id', sId)
-            .eq('user_id', user.id)
+      } else {
+        try {
+          unsetChannelPayload = await res.json()
+        } catch {
+          unsetChannelPayload = null
         }
       }
 
-      return NextResponse.json({ success: true, message: 'Channel unset successfully' })
+      await refreshBundleChannels(teamId, platform)
+
+      // ── SYNC UPDATED DATA FROM BUNDLE ──────────────────────────────────────
+      const { socialAccountId: sId } = body
+      const { data: existingAccount } = await db
+        .from('social_accounts')
+        .select('id, display_name, username, avatar_url, metadata')
+        .eq('bundle_social_account_id', sId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      const remoteAccount =
+        unsetChannelPayload ||
+        await fetchBundleAccountByType(teamId, platform, sId)
+
+      const fallbackAccount = {
+        type: platform,
+        id: sId,
+        displayName: existingAccount?.display_name || null,
+        username: existingAccount?.username || null,
+        avatarUrl: existingAccount?.avatar_url || null,
+        channelId: null,
+        channels: toBundleChannels(existingAccount?.metadata?.available_channels),
+      }
+
+      const normalized = normalizeBundleAccountState(
+        remoteAccount || fallbackAccount,
+        platform,
+        null
+      )
+
+      if (sId) {
+        await db
+          .from('social_accounts')
+          .update({
+            account_id: normalized.account_id,
+            account_name: normalized.account_name,
+            display_name: normalized.display_name,
+            username: normalized.username,
+            avatar_url: normalized.avatar_url,
+            metadata: normalized.metadata,
+            updated_at: new Date().toISOString()
+          })
+          .eq('bundle_social_account_id', sId)
+          .eq('user_id', user.id)
+      }
+
+      return NextResponse.json({ success: true, message: 'Channel unset successfully', data: normalized })
     }
 
     // ── DEFAULT: MANUAL SAVE ─────────────────────────────────────────────────
@@ -583,10 +815,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Account ID required' }, { status: 400 })
     }
 
-    // Fetch the account (verify ownership + get Bundle ID)
+    // Fetch the account (verify ownership + get Bundle disconnect inputs)
     const { data: existing } = await db
       .from('social_accounts')
-      .select('id, bundle_social_account_id')
+      .select('id, platform, bundle_social_account_id')
       .eq('id', id)
       .eq('user_id', user.id)
       .single()
@@ -595,23 +827,46 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 })
     }
 
-    // 1. Delete from Bundle.social first (best-effort — don't fail if already gone)
+    // 1. Delete from Bundle.social first. Only continue locally if the remote
+    // disconnect explicitly succeeds.
     if (existing.bundle_social_account_id) {
+      const teamId = await getOrCreateBundleTeam(user.id)
       try {
         const res = await fetch(
-          `${BUNDLE_API}/social-account/${existing.bundle_social_account_id}`,
+          `${BUNDLE_API}/social-account/disconnect`,
           {
             method: 'DELETE',
-            headers: { 'x-api-key': BUNDLE_KEY() },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': BUNDLE_KEY(),
+            },
+            body: JSON.stringify({
+              type: existing.platform,
+              teamId,
+            }),
           }
         )
-        if (!res.ok && res.status !== 404) {
+        if (!res.ok) {
           const errText = await res.text()
-          console.warn(`Bundle DELETE social-account warning (${res.status}):`, errText)
+          console.warn(`Bundle DELETE social-account failed (${res.status}):`, errText)
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Failed to disconnect the account. The account was not removed locally.',
+              details: errText,
+            },
+            { status: 502 }
+          )
         }
       } catch (bundleErr) {
-        // Non-fatal: still remove from Supabase
-        console.warn('Bundle.social DELETE failed (non-fatal):', bundleErr)
+        console.warn('Bundle.social DELETE failed:', bundleErr)
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to disconnect the account. The account was not removed locally.',
+          },
+          { status: 502 }
+        )
       }
     }
 

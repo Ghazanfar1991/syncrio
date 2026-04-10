@@ -1,16 +1,18 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/components/providers/auth-provider"
+import { getRouteWarmJobs } from "@/lib/app-warmup"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import {
   Home,
   Rocket,
   Calendar,
   BarChart3,
-  Settings,
   LogOut,
   Shield,
   FileText,
@@ -31,9 +33,11 @@ export function Sidebar(props: SidebarProps) {
   const collapsedProp = props.collapsed
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const { user } = useAuth()
   const supabase = getSupabaseBrowserClient()
   const STORAGE_KEY = "syncrio.sidebar.collapsed"
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set())
 
   // Determine controlled vs uncontrolled: only controlled if prop AND handler provided
   const isControlled = typeof collapsedProp !== "undefined" && typeof onToggleCollapse === "function"
@@ -101,7 +105,7 @@ export function Sidebar(props: SidebarProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/auth/signin')
   }
 
   const navigationItems = [
@@ -117,6 +121,28 @@ export function Sidebar(props: SidebarProps) {
       { label: 'Admin', icon: <Shield className="w-5 h-5"/>, route: '/app-owner' }
     ] : [])
   ]
+
+  const prefetchNavigationTarget = (route: string) => {
+    if (prefetchedRoutesRef.current.has(route)) {
+      return
+    }
+
+    prefetchedRoutesRef.current.add(route)
+    router.prefetch(route)
+    const jobs = getRouteWarmJobs(queryClient, route)
+
+    if (!jobs?.length) {
+      return
+    }
+
+    void Promise.allSettled(jobs).then((results) => {
+      results.forEach((result) => {
+        if (result.status === "rejected") {
+          console.warn(`Navigation prefetch failed for ${route}:`, result.reason)
+        }
+      })
+    })
+  }
 
   const handleCollapseToggle = () => {
     const next = !isCollapsed
@@ -162,12 +188,11 @@ export function Sidebar(props: SidebarProps) {
     <aside
       className={`hidden md:block fixed left-0 top-0 h-screen z-50 transition-all duration-300 will-change-[width] ${className}`}
       style={{ width: isCollapsed ? collapsedWidth : expandedWidth }}
-      aria-expanded={!isCollapsed}
       data-collapsed={isCollapsed ? "true" : "false"}
     >
       <div className="h-full bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border-r border-black/5 dark:border-white/5 shadow-xl rounded-r-3xl flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         {/* App Logo Section */}
-<div className="p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/2 dark:hover:bg-white/3 transition-colors duration-300">
+        <div className="p-4 border-b border-black/5 dark:border-white/5 hover:bg-black/2 dark:hover:bg-white/3 transition-colors duration-300">
   <div className="flex items-center justify-between">
     <div 
       className={`flex items-center gap-3 ${isCollapsed ? 'cursor-pointer' : ''}`}
@@ -176,8 +201,14 @@ export function Sidebar(props: SidebarProps) {
     >
       <div className={`transition-transform duration-200 ${isCollapsed && onToggleCollapse ? 'hover:scale-105' : ''}`}>
         <div className="w-12 h-12">
-          {/* Replace the "A" with the logo */}
-          <img src="/applogo.PNG" alt="App Logo" className="w-full h-full " />
+          <Image
+            src="/applogo.PNG"
+            alt="App Logo"
+            width={48}
+            height={48}
+            className="h-full w-full"
+            priority
+          />
         </div>
       </div>
       {!isCollapsed && (
@@ -213,6 +244,8 @@ export function Sidebar(props: SidebarProps) {
               <Link
                 key={idx}
                 href={item.route}
+                onMouseEnter={() => prefetchNavigationTarget(item.route)}
+                onFocus={() => prefetchNavigationTarget(item.route)}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gradient-to-r hover:from-rose-50 hover:to-pink-50 dark:hover:from-rose-900/20 dark:hover:to-pink-900/20 transition-all duration-300 ${
                   isCollapsed ? 'justify-center px-1' : ''
                 } ${
@@ -277,6 +310,8 @@ export function Sidebar(props: SidebarProps) {
               <li key={`m-${idx}`} className="shrink-0">
                 <Link
                   href={item.route}
+                  onTouchStart={() => prefetchNavigationTarget(item.route)}
+                  onFocus={() => prefetchNavigationTarget(item.route)}
                   className={`group grid place-items-center rounded-xl px-2 py-1 transition-colors ${
                     active
                       ? 'text-rose-600 dark:text-rose-400'

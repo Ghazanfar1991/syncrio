@@ -1,6 +1,7 @@
 // API utility functions - Updated for Supabase (snake_case -> camelCase)
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { buildBundlePlatformPayload, type BundlePlatformId, type BundleUploadedMedia } from '@/lib/bundle-platforms'
 
 // Standard API response helpers
 export function apiSuccess(data: any, status: number = 200) {
@@ -42,7 +43,7 @@ export const schemas = {
 
   // Post schemas
   createPost: z.object({
-    content: z.string().max(2000).nullable().optional(),
+    content: z.string().max(50000).nullable().optional(),
     hashtags: z.array(z.string()).optional(),
     imageUrl: z.string().nullable().optional(),
     images: z.array(z.string()).optional(),
@@ -55,8 +56,8 @@ export const schemas = {
       const date = new Date(val)
       return !isNaN(date.getTime())
     }, 'Invalid date format').optional(),
-    title: z.string().max(100).optional(),
-    description: z.string().max(5000).optional(),
+    title: z.string().max(300).optional(),
+    description: z.string().max(30000).optional(),
     imageUploadIds: z.array(z.string()).nullable().optional(),
     videoUploadId: z.string().nullable().optional(),
     thumbnailUploadId: z.string().nullable().optional(),
@@ -71,7 +72,7 @@ export const schemas = {
   }),
 
   updatePost: z.object({
-    content: z.string().min(1).max(2000).optional(),
+    content: z.string().min(1).max(50000).optional(),
     hashtags: z.array(z.string()).optional(),
     imageUrl: z.string().optional(),
     images: z.array(z.string()).optional(),
@@ -121,68 +122,23 @@ export function buildBundlePlatformData(
   const data: Record<string, any> = {}
 
   for (const platform of platforms) {
-    const platformUploadIds = [...uploadIds]
-    
-    switch (platform) {
-      case 'INSTAGRAM':
-        data.INSTAGRAM = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'FACEBOOK':
-        data.FACEBOOK = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'TWITTER':
-        data.TWITTER = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'LINKEDIN':
-        data.LINKEDIN = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'TIKTOK':
-        data.TIKTOK = { 
-          text: content, 
-          uploadIds: platformUploadIds, 
-          privacy: metadata.privacy || 'PUBLIC_TO_EVERYONE',
-          title: metadata.title || undefined
-        }
-        break
-      case 'YOUTUBE':
-        data.YOUTUBE = { 
-          title: metadata.title || 'Untitled Video',
-          description: metadata.description || content || '',
-          uploadIds: platformUploadIds, 
-          type: metadata.type || 'VIDEO', 
-          madeForKids: metadata.madeForKids !== undefined ? metadata.madeForKids : false,
-          privacyStatus: metadata.privacyStatus || 'public'
-        }
-        if (metadata.thumbnailUploadId) {
-          data.YOUTUBE.uploadIds = [metadata.thumbnailUploadId, ...platformUploadIds]
-        }
-        break
-      case 'THREADS':
-        data.THREADS = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'PINTEREST':
-        data.PINTEREST = { note: content, uploadIds: platformUploadIds }
-        break
-      case 'REDDIT':
-        data.REDDIT = { text: content, title: metadata.title || content.substring(0, 300) }
-        break
-      case 'MASTODON':
-        data.MASTODON = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'BLUESKY':
-        data.BLUESKY = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'DISCORD':
-        data.DISCORD = { content, uploadIds: platformUploadIds }
-        break
-      case 'SLACK':
-        data.SLACK = { text: content, uploadIds: platformUploadIds }
-        break
-      case 'GOOGLE_BUSINESS':
-        data.GOOGLE_BUSINESS = { summary: content, uploadIds: platformUploadIds }
-        break
-      default:
-        data[platform] = { text: content, uploadIds: platformUploadIds }
+    const platformId = platform as BundlePlatformId
+    const uploadedMedia: BundleUploadedMedia[] = Array.isArray(metadata?.uploadedMedia)
+      ? metadata.uploadedMedia
+      : uploadIds.map((uploadId: string) => ({
+          uploadId,
+          url: '',
+          kind: 'IMAGE',
+          mimeType: 'application/octet-stream',
+          fileSize: 0,
+        }))
+
+    data[platform] = buildBundlePlatformPayload(platformId, content, {
+      ...metadata,
+      uploadedMedia,
+    })
+    if (!data[platform]?.uploadIds?.length && uploadIds.length > 0) {
+      data[platform].uploadIds = [...uploadIds]
     }
   }
 

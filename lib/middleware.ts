@@ -3,38 +3,69 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from './supabase/server'
 import { db } from './db'
 
+interface AuthOptions {
+  includeProfile?: boolean
+}
+
+async function resolveAuthUser(includeProfile: boolean = false) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser()
+
+  if (error || !user) {
+    return null
+  }
+
+  const baseUser = {
+    id: user.id,
+    email: user.email || null,
+    name:
+      user.user_metadata?.name ||
+      user.user_metadata?.full_name ||
+      null,
+  }
+
+  if (!includeProfile) {
+    return baseUser
+  }
+
+  const { data: profile } = await db
+    .from('users')
+    .select('name, subscription:subscriptions(tier, status)')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  return {
+    ...baseUser,
+    name: profile?.name || baseUser.name,
+    subscriptionTier: profile?.subscription?.tier || 'STARTER',
+    subscription: profile?.subscription || null,
+  }
+}
+
+export async function getAuthUser(options: AuthOptions = {}) {
+  return resolveAuthUser(options.includeProfile)
+}
+
 // Authentication middleware
 export function withAuth(
-  handler: (req: NextRequest, user: any) => Promise<NextResponse>
+  handler: (req: NextRequest, user: any) => Promise<NextResponse>,
+  options: AuthOptions = {}
 ) {
   return async (req: NextRequest) => {
     try {
-      const supabase = await createClient()
-      const { data: { user }, error } = await supabase.auth.getUser()
+      const user = await resolveAuthUser(options.includeProfile)
 
-      if (error || !user) {
+      if (!user) {
         return NextResponse.json(
           { error: 'Unauthorized' },
           { status: 401 }
         )
       }
 
-      // Fetch profile to get subscription tier
-      const { data: profile } = await db
-        .from('users')
-        .select('*, subscription:subscriptions(tier, status)')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      const enrichedUser = {
-        id: user.id,
-        email: user.email!,
-        name: profile?.name || user.user_metadata?.name || null,
-        subscriptionTier: profile?.subscription?.tier || 'STARTER',
-        subscription: profile?.subscription || null,
-      }
-
-      return handler(req, enrichedUser)
+      return handler(req, user)
     } catch (error) {
       console.error('Auth middleware error:', error)
       return NextResponse.json(
@@ -45,12 +76,18 @@ export function withAuth(
   }
 }
 
+export function withEnrichedAuth(
+  handler: (req: NextRequest, user: any) => Promise<NextResponse>
+) {
+  return withAuth(handler, { includeProfile: true })
+}
+
 // Subscription check middleware
 export function withSubscription(
   handler: (req: NextRequest, user: any) => Promise<NextResponse>,
   requiredTier?: string
 ) {
-  return withAuth(async (req: NextRequest, user: any) => {
+  return withEnrichedAuth(async (req: NextRequest, user: any) => {
     if (requiredTier && user.subscriptionTier !== requiredTier) {
       const tiers = ['STARTER', 'GROWTH', 'BUSINESS', 'AGENCY']
       const currentIdx = tiers.indexOf(user.subscriptionTier)

@@ -15,13 +15,6 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
-  ADD_TOAST: "ADD_TOAST",
-  UPDATE_TOAST: "UPDATE_TOAST",
-  DISMISS_TOAST: "DISMISS_TOAST",
-  REMOVE_TOAST: "REMOVE_TOAST",
-} as const
-
 let count = 0
 
 function genId() {
@@ -29,23 +22,21 @@ function genId() {
   return count.toString()
 }
 
-type ActionType = typeof actionTypes
-
 type Action =
   | {
-      type: ActionType["ADD_TOAST"]
+      type: "ADD_TOAST"
       toast: ToasterToast
     }
   | {
-      type: ActionType["UPDATE_TOAST"]
+      type: "UPDATE_TOAST"
       toast: Partial<ToasterToast>
     }
   | {
-      type: ActionType["DISMISS_TOAST"]
+      type: "DISMISS_TOAST"
       toastId?: ToasterToast["id"]
     }
   | {
-      type: ActionType["REMOVE_TOAST"]
+      type: "REMOVE_TOAST"
       toastId?: ToasterToast["id"]
     }
 
@@ -139,6 +130,33 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
+type GlobalToastType = "success" | "error" | "info" | "warning" | "loading"
+
+type GlobalToastOptions = {
+  message: React.ReactNode
+  title?: React.ReactNode
+  type?: GlobalToastType
+} & Omit<Toast, "title" | "description" | "variant">
+
+const globalToastVariants: Record<
+  GlobalToastType,
+  NonNullable<ToastProps["variant"]>
+> = {
+  success: "success",
+  error: "destructive",
+  info: "default",
+  warning: "warning",
+  loading: "loading",
+}
+
+const globalToastTitles: Record<GlobalToastType, string> = {
+  success: "Success",
+  error: "Error",
+  info: "Info",
+  warning: "Warning",
+  loading: "Loading",
+}
+
 function toast({ ...props }: Toast) {
   const id = genId()
 
@@ -168,6 +186,20 @@ function toast({ ...props }: Toast) {
   }
 }
 
+function showGlobalToast({
+  message,
+  title,
+  type = "info",
+  ...props
+}: GlobalToastOptions) {
+  return toast({
+    ...props,
+    title: title ?? globalToastTitles[type],
+    description: message,
+    variant: globalToastVariants[type],
+  })
+}
+
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
 
@@ -184,8 +216,9 @@ function useToast() {
   return {
     ...state,
     toast,
+    showGlobalToast,
     dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
   }
 }
 
-export { useToast, toast }
+export { useToast, toast, showGlobalToast }

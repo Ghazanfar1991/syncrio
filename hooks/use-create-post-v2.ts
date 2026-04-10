@@ -1,9 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from "@/components/providers/auth-provider"
 import { useToast } from '@/hooks/use-toast'
+import { appQueryKeys, useSocialAccountsQuery } from '@/hooks/queries/use-app-queries'
 import { uploadProgressManager } from '@/components/upload-progress'
+import { getIntegrationChannelSelectionState } from '@/lib/bundle-account-state'
 
 // --- Interfaces ---
 
@@ -116,6 +119,15 @@ export interface MediaOptions {
   videoStyle?: string
 }
 
+const parseMetadata = (value: unknown) => {
+  if (typeof value !== 'string') return value || {}
+  try {
+    return JSON.parse(value)
+  } catch {
+    return {}
+  }
+}
+
 export interface ContentCreationStep {
   step: 'mode-selection' | 'input' | 'generating' | 'preview' | 'scheduling'
   mode: 'ai-generate' | 'manual-create' | null
@@ -153,9 +165,8 @@ const appendHashtagsToContent = (content: string, hashtags: string[]): string =>
 export function useCreatePost() {
   const { user: session } = useAuth()
   const { toast } = useToast()
-
-  const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([])
-  const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const queryClient = useQueryClient()
+  const socialAccountsQuery = useSocialAccountsQuery(Boolean(session))
   const [creationState, setCreationState] = useState<ContentCreationStep>({
     step: 'mode-selection',
     mode: null,
@@ -200,44 +211,37 @@ export function useCreatePost() {
     setCreationState(prev => ({ ...prev, selectedAccounts: [] }))
   }, [])
 
-  // Fetch accounts
-  const fetchSocialAccounts = useCallback(async () => {
-    try {
-      setLoadingAccounts(true)
-      const response = await fetch('/api/social/accounts')
-      const data = await response.json()
+  const socialAccounts = useMemo(() => {
+    const rawAccounts = socialAccountsQuery.data || []
 
-      if (data.success && data.data && Array.isArray(data.data)) {
-        const transformed: SocialAccount[] = data.data.map((acc: any) => ({
-          id: acc.id,
-          platform: acc.platform,
-          accountId: acc.account_id,
-          accountName: acc.account_name,
-          username: acc.username || acc.account_name,
-          displayName: acc.display_name || acc.account_name,
-          avatarUrl: acc.avatar_url,
-          isActive: acc.is_active,
-          isConnected: acc.is_connected,
-          needsReauth: acc.needs_reauth || false,
-          accountType: (acc.account_type || 'personal').toLowerCase(),
-          permissions: Array.isArray(acc.permissions) ? acc.permissions : [],
-          bundleSocialAccountId: acc.bundle_social_account_id,
-          metadata: acc.metadata || {},
-          createdAt: acc.created_at,
-          updatedAt: acc.updated_at
-        }))
-        setSocialAccounts(transformed.filter((account: SocialAccount) => account.isActive && account.isConnected))
-      }
-    } catch (error) {
-      console.error('Failed to fetch social accounts:', error)
-    } finally {
-      setLoadingAccounts(false)
-    }
-  }, [])
+    return rawAccounts
+      .map((acc: any) => ({
+        id: acc.id,
+        platform: acc.platform,
+        accountId: acc.account_id,
+        accountName: acc.account_name,
+        username: acc.username || acc.account_name,
+        displayName: acc.display_name || acc.account_name,
+        avatarUrl: acc.avatar_url,
+        isActive: acc.is_active,
+        isConnected: acc.is_connected,
+        needsReauth: acc.needs_reauth || false,
+        accountType: (acc.account_type || 'personal').toLowerCase(),
+        permissions: Array.isArray(acc.permissions) ? acc.permissions : [],
+        bundleSocialAccountId: acc.bundle_social_account_id,
+        metadata: parseMetadata(acc.metadata),
+        createdAt: acc.created_at,
+        updatedAt: acc.updated_at,
+      }))
+      .filter(
+        (account: SocialAccount) =>
+          account.isActive &&
+          account.isConnected &&
+          !getIntegrationChannelSelectionState(account)
+      )
+  }, [socialAccountsQuery.data])
 
-  useEffect(() => {
-    if (session) fetchSocialAccounts()
-  }, [session, fetchSocialAccounts])
+  const loadingAccounts = socialAccountsQuery.isLoading
 
   // --- Handlers ---
 
@@ -452,6 +456,13 @@ export function useCreatePost() {
       }
 
       if (successfulDrafts > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.posts }),
+          queryClient.invalidateQueries({ queryKey: ["post-analytics"] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] }),
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.dashboardStats }),
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.dashboardInsights }),
+        ])
         toast({ title: "Drafts Saved", description: `Saved ${successfulDrafts} drafts successfully`, variant: "success" })
         resetManualCreationState()
       }
@@ -492,6 +503,13 @@ export function useCreatePost() {
       }
 
       if (successfulPosts > 0) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.posts }),
+          queryClient.invalidateQueries({ queryKey: ["post-analytics"] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard-posts"] }),
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.dashboardStats }),
+          queryClient.invalidateQueries({ queryKey: appQueryKeys.dashboardInsights }),
+        ])
         toast({ title: "Success", description: "Posts published successfully", variant: "success" })
         resetManualCreationState()
       }

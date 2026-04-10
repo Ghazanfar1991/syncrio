@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { subscriptionTiers } from '@/lib/stripe'
 
 interface UsageCardProps {
@@ -8,6 +9,7 @@ interface UsageCardProps {
 }
 
 export function UsageCard({ userId }: UsageCardProps) {
+  const router = useRouter()
   const [usage, setUsage] = useState<any>(null)
   const [subscription, setSubscription] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -145,7 +147,7 @@ export function UsageCard({ userId }: UsageCardProps) {
           {(postsPercentage >= 75 || accountsPercentage >= 75) && (
             <div className="mt-4">
               <button
-                onClick={() => window.location.href = '/pricing'}
+                onClick={() => router.push('/pricing')}
                 className="text-xs text-blue-600 hover:text-blue-700 font-medium"
               >
                 Upgrade Plan →

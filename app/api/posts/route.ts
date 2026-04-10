@@ -1,9 +1,10 @@
 // Posts API — Supabase storage + Bundle.social publishing
-import { NextRequest, NextResponse } from 'next/server'
-import { withAuth, withErrorHandling } from '@/lib/middleware'
+import { NextRequest } from 'next/server'
+import { withAuth, withEnrichedAuth, withErrorHandling } from '@/lib/middleware'
 import { apiSuccess, apiError, validateRequest, schemas, parseQueryParams, hashtagsToString, formatPostWithHashtags, buildBundlePlatformData } from '@/lib/api-utils'
 import { db, checkUsageLimit } from '@/lib/db'
 import { supabaseAdmin } from '@/lib/supabase/admin'
+import { validateBundlePlatformPost, type BundlePlatformId } from '@/lib/bundle-platforms'
 
 const BUNDLE_API = 'https://api.bundle.social/api/v1'
 const BUNDLE_KEY = () => process.env.BUNDLE_SOCIAL_API_KEY!
@@ -29,34 +30,107 @@ export async function GET(req: NextRequest) {
   return withErrorHandling(
     withAuth(async (req: NextRequest, user: any) => {
       const { page, limit, status, platform } = parseQueryParams(req.url)
+      const includeAnalytics = req.nextUrl.searchParams.get('includeAnalytics') === 'true'
       const from = (page - 1) * limit
       const to = from + limit - 1
 
       let query = db
         .from('posts')
         .select(`
-          *,
+          id,
+          user_id,
+          content,
+          hashtags,
+          image_url,
+          images,
+          video_url,
+          videos,
+          platform,
+          status,
+          scheduled_at,
+          published_at,
+          title,
+          description,
+          created_at,
+          updated_at,
           publications:post_publications(
-            *,
-            social_account:social_accounts(*)
-          ),
-          analytics:post_analytics(*)
-        `, { count: 'exact' })
+            id,
+            social_account_id,
+            platform,
+            status,
+            published_at,
+            error_message,
+            social_account:social_accounts(
+              id,
+              account_name,
+              platform
+            )
+          )
+        `)
         .eq('user_id', user.id)
+
+      if (includeAnalytics) {
+        query = db
+          .from('posts')
+          .select(`
+            id,
+            user_id,
+            content,
+            hashtags,
+            image_url,
+            images,
+            video_url,
+            videos,
+            platform,
+            status,
+            scheduled_at,
+            published_at,
+            title,
+            description,
+            created_at,
+            updated_at,
+            publications:post_publications(
+              id,
+              social_account_id,
+              platform,
+              status,
+              published_at,
+              error_message,
+              social_account:social_accounts(
+                id,
+                account_name,
+                platform
+              )
+            ),
+            analytics:post_analytics(
+              id,
+              platform,
+              impressions,
+              likes,
+              comments,
+              shares
+            )
+          `)
+          .eq('user_id', user.id)
+      }
 
       if (status) query = query.eq('status', status)
       if (platform) query = query.eq('platform', platform)
 
-      const { data: posts, count, error } = await query
+      const { data: posts, error } = await query
         .order('created_at', { ascending: false })
         .range(from, to)
 
       if (error) throw error
 
-      const total = count || 0
       return apiSuccess({
         posts: posts?.map(p => formatPostWithHashtags(p)) || [],
-        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        pagination: {
+          page,
+          limit,
+          total: posts?.length || 0,
+          pages: posts?.length ? 1 : 0,
+        },
       })
     })
   )(req)
@@ -67,7 +141,7 @@ export async function GET(req: NextRequest) {
 // ─────────────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   return withErrorHandling(
-    withAuth(async (req: NextRequest, user: any) => {
+    withEnrichedAuth(async (req: NextRequest, user: any) => {
       const body = await req.json()
 
       try {
@@ -116,6 +190,12 @@ export async function POST(req: NextRequest) {
         // ── 3. Determine platforms to publish to ─────────────────────────────
         const platforms = [...new Set(socialAccounts.map((a: any) => a.platform))] as string[]
         const postPlatform = platform || platforms[0] || 'TWITTER'
+        for (const platformId of platforms) {
+          const validation = validateBundlePlatformPost(platformId as BundlePlatformId, content || '', metadata || {})
+          if (validation.errors.length > 0) {
+            return apiError(validation.errors.join(' '), 400)
+          }
+        }
 
         // ── 4. Collect upload IDs (from client or media fields) ──────────────
         const uploadIds: string[] = []

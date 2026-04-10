@@ -21,7 +21,7 @@ export function TopRightControls({
   const { user } = useAuth()
   const supabase = getSupabaseBrowserClient()
   const router = useRouter()
-  const { theme, toggleTheme } = useTheme()
+  const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
@@ -45,7 +45,7 @@ export function TopRightControls({
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    router.push('/')
+    router.push('/auth/signin')
   }
 
   return (
